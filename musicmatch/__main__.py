@@ -134,6 +134,14 @@ def cmd_preload(args) -> int:
     return 0
 
 
+def cmd_uninstall(args) -> int:
+    from .autostart import uninstall_windows_app
+
+    uninstall_windows_app()
+    print("Removed MusicMatch from the Start menu and Apps list. Your project folder is unchanged.")
+    return 0
+
+
 def cmd_service(args) -> int:
     from .service import main as service_main
 
@@ -194,6 +202,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("preload", help="prepare colors for the current song and queue")
     p.add_argument("--limit", type=int, default=12, help="how many upcoming songs to prepare")
     p.set_defaults(func=cmd_preload)
+
+    p = sub.add_parser("uninstall", help="remove the Windows Start menu shortcut and Apps entry")
+    p.set_defaults(func=cmd_uninstall)
 
     p = sub.add_parser("service", help="run in the background with a tray / menu-bar icon")
     p.set_defaults(func=cmd_service)

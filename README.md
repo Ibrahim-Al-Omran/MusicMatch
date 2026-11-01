@@ -80,7 +80,7 @@ cd MusicMatch
 
 Then double-click **`Start MusicMatch.cmd`** (Windows) or **`Start MusicMatch.command`** (Mac; run `chmod +x "Start MusicMatch.command"` once). The first launch creates a virtual environment and installs everything.
 
-On Windows, once it has run, the **`MusicMatch`** shortcut in the folder has the app icon; right-click it to pin it to Start or the taskbar.
+On Windows, the first time you open the app it adds **MusicMatch** to the Start menu and Settings → Apps (with the note icon). Pin it from Start if you want it on the taskbar. `python -m musicmatch uninstall` removes those entries without deleting this folder.
 
 ### Command line
 

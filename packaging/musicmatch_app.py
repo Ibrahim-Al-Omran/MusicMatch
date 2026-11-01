@@ -6,6 +6,11 @@ import sys
 from musicmatch.service import BACKGROUND_FLAG
 
 if __name__ == "__main__":
+    if "uninstall" in sys.argv:
+        from musicmatch.autostart import uninstall_windows_app
+
+        uninstall_windows_app()
+        sys.exit(0)
     if BACKGROUND_FLAG in sys.argv:
         from musicmatch.service import main
 

@@ -111,6 +111,8 @@ class App:
 
         self._check_spotify_login()
         self._sync_login_item()
+        if sys.platform == "win32":
+            self._background(autostart.install_windows_app)
         svc.start_background()
         self._poll_background()
         if not self.cfg.lights:  # first run: go look for lights straight away
