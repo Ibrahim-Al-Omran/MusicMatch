@@ -10,17 +10,19 @@ Your smart lights change to the color of whatever's playing on Spotify, on **any
 
 ## Download
 
+**Right now, use the source zip.** There is no prebuilt Windows/Mac app on the Releases page yet, so those old links 404.
+
 | | |
 |---|---|
-| **Windows 10/11** | [MusicMatch-Windows.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-Windows.zip): unzip anywhere, open `MusicMatch.exe` |
-| **macOS (Apple Silicon)** | [MusicMatch-macOS.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-macOS.zip): unzip, drag `MusicMatch.app` to Applications |
+| **Source (Windows or Mac)** | [Download ZIP](https://github.com/Ibrahim-Al-Omran/MusicMatch/archive/refs/heads/main.zip), unzip, then run `Start MusicMatch.cmd` (Windows) or `Start MusicMatch.command` (Mac). Needs [Python 3.10+](https://www.python.org/downloads/). |
+| **Windows / Mac apps** | After the first [release](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases) is published, grab `MusicMatch-Windows.zip` or `MusicMatch-macOS.zip` from there. Unzip and open `MusicMatch.exe` or `MusicMatch.app`. |
 
-The apps aren't code-signed, so the first launch needs one extra click:
+The packaged apps aren't code-signed, so the first launch needs one extra click:
 
 - **Windows:** if SmartScreen says "Windows protected your PC", click **More info → Run anyway**. Allow it on **private networks** if the firewall asks (that's how it finds your lights).
 - **Mac:** open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. When asked, allow it to **find devices on your local network**.
 
-Prefer running from source? See [Run from source](#run-from-source).
+More detail: [Run from source](#run-from-source).
 
 ## Set up (about 3 minutes)
 
