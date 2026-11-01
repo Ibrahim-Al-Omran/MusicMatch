@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Secrets and machine-specific state — never commit these
+config.json
+.spotify_token_cache
+*.log
+.musicmatch.lock
+.musicmatch_gui.lock
+.musicmatch_state.json*
+.musicmatch_quit
+.musicmatch_show
+.musicmatch_colors.json
+.musicmatch_colors.json.tmp
+
+# Local shortcuts and build output
+MusicMatch.lnk
+build/
+dist/
+*.spec.bak
