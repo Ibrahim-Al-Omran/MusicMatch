@@ -12,8 +12,8 @@ Your smart lights change to the color of whatever's playing on Spotify, on **any
 
 | | |
 |---|---|
-| **Windows 10/11** | [MusicMatch-Windows.zip](https://github.com/YOUR-GITHUB-USERNAME/MusicMatch/releases/latest/download/MusicMatch-Windows.zip): unzip anywhere, open `MusicMatch.exe` |
-| **macOS (Apple Silicon)** | [MusicMatch-macOS.zip](https://github.com/YOUR-GITHUB-USERNAME/MusicMatch/releases/latest/download/MusicMatch-macOS.zip): unzip, drag `MusicMatch.app` to Applications |
+| **Windows 10/11** | [MusicMatch-Windows.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-Windows.zip): unzip anywhere, open `MusicMatch.exe` |
+| **macOS (Apple Silicon)** | [MusicMatch-macOS.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-macOS.zip): unzip, drag `MusicMatch.app` to Applications |
 
 The apps aren't code-signed, so the first launch needs one extra click:
 
@@ -71,7 +71,7 @@ Settings are saved to `config.json`: next to the code when running from source, 
 Needs Python 3.10+ ([python.org](https://www.python.org/downloads/); on Mac, Homebrew Python also needs `brew install python-tk`).
 
 ```bash
-git clone https://github.com/YOUR-GITHUB-USERNAME/MusicMatch.git
+git clone https://github.com/Ibrahim-Al-Omran/MusicMatch.git
 cd MusicMatch
 ```
 
