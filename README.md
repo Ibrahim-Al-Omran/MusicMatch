@@ -2,6 +2,8 @@
 
 Your smart lights change to the color of whatever's playing on Spotify, on **any** device: your phone, a PlayStation, an Echo, a laptop, a TV, or the web player.
 
+**Still in the works.** Windows is the more polished path today. Mac works, but it is not seamless yet: Apple blocks the unsigned app on first open, only Apple Silicon is built so far, and menu-bar / login-item behavior still needs real Mac testing. The goal is a Mac install that just opens, finds your lights, and stays out of the way.
+
 ![MusicMatch](screenshot.png)
 
 - **Finds your lights by itself.** Works with Magic Home, WiZ, LIFX, Govee, Yeelight, and Philips Hue, all at once, straight over your Wi-Fi (no cloud accounts).
@@ -16,10 +18,10 @@ Your smart lights change to the color of whatever's playing on Spotify, on **any
 | **macOS (Apple Silicon)** | [MusicMatch-macOS.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-macOS.zip): unzip, drag `MusicMatch.app` to Applications |
 | **Source** | [Download ZIP](https://github.com/Ibrahim-Al-Omran/MusicMatch/archive/refs/heads/main.zip) if you want to run it with Python. See [Run from source](#run-from-source). |
 
-The packaged apps aren't code-signed, so the first launch needs one extra click:
+The packaged apps aren't code-signed yet (that needs paid developer certificates). First launch needs one extra click:
 
 - **Windows:** if SmartScreen says "Windows protected your PC", click **More info → Run anyway**. Allow it on **private networks** if the firewall asks (that's how it finds your lights).
-- **Mac:** open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**. When asked, allow it to **find devices on your local network**.
+- **Mac (still rough):** Control-click **MusicMatch.app → Open**, or go to **System Settings → Privacy & Security → Open Anyway**. If that still fails: `xattr -dr com.apple.quarantine /Applications/MusicMatch.app`. Allow **local network** when asked. Intel Macs are not built yet.
 
 More detail: [Run from source](#run-from-source).
 
@@ -117,6 +119,7 @@ For an always-on Raspberry Pi: copy the folder (including `.spotify_token_cache`
 - **Spotify says "INVALID_CLIENT: Invalid redirect URI":** the Redirect URI in your Spotify app must be exactly `http://127.0.0.1:8888/callback`.
 - **Spotify connects but nothing happens for another person in your home:** add their Spotify email under your app's **User Management**.
 - **Only Spotify is supported.** Apple Music, YouTube, or Alexa's own radio stations aren't visible to the Spotify API. Anything played *through Spotify* works, on any device.
+- **Mac is still being finished.** If the app won't open, use the Gatekeeper steps above. If lights or the menu-bar icon misbehave, [open an issue](https://github.com/Ibrahim-Al-Omran/MusicMatch/issues) with what you saw.
 
 ## Building the apps
 
