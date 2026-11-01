@@ -60,7 +60,7 @@ Play anything on Spotify on any device. The lights follow within about a second 
 
 ## Using it
 
-- **Tray / menu-bar icon** (a music note in your light's color): **Open MusicMatch**, **Pause syncing**, **Quit**. On Windows it may hide behind the **^** arrow next to the clock; drag it out to keep it visible.
+- **Tray / menu-bar icon:** Windows uses a colored note by the clock (it may hide behind **^**). On Mac it is a 1Password-style music note in the **top menu bar**; click it for **Open MusicMatch**, **Pause syncing**, and **Quit**. The packaged Mac app stays out of the Dock while it runs in the background.
 - **Start at login** (under Setup) keeps it running whenever you're logged in.
 - **Brightness** sets how bright the lights get; **Color boost** makes muted covers more vivid without changing brightness.
 - **Colors from**: *Spotify* = the color Spotify shows behind the album; *Vibrant* = the most colorful part of the cover; *Dominant* = the most common color, even black or white.

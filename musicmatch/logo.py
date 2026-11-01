@@ -81,6 +81,14 @@ def mark(size: int, color=None) -> Image.Image:
     return img
 
 
+def menu_bar_icon(size: int = 44) -> Image.Image:
+    """Black note on a transparent background. macOS treats this as a template
+    image and tints it to match the menu bar (like 1Password)."""
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    img.putalpha(_mask(size))
+    return img
+
+
 def tray_icon(color=None, size: int = 64, muted: bool = False) -> Image.Image:
     """Note with a soft dark halo, for the tray / menu bar: the halo vanishes on a dark
     taskbar and keeps pale colours readable on a light one. `muted` = paused (grey)."""

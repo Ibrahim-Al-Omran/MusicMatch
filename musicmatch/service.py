@@ -123,6 +123,8 @@ def stop_background() -> None:
 
 
 def tray_image(color, size: int = 64, muted: bool = False) -> Image.Image:
+    if sys.platform == "darwin":
+        return logo.menu_bar_icon(max(size, 44))
     return logo.tray_icon(color, size, muted=muted)
 
 
@@ -266,6 +268,8 @@ class Service:
             if sys.platform == "darwin":
                 _hide_dock_icon()
             import pystray
+            if sys.platform == "darwin":
+                _use_template_menu_bar_icon()
         except Exception as exc:
             log.info("No tray icon (%s); running headless", exc)
             return False
@@ -308,7 +312,8 @@ class Service:
             look = (tuple(self.state.get("color") or DEFAULT_ICON_COLOR), self.state.get("status") == "paused")
             if look != self._icon_look:
                 self._icon_look = look
-                icon.icon = tray_image(look[0], muted=look[1])
+                if sys.platform != "darwin":  # Mac uses a template glyph that follows the menu bar
+                    icon.icon = tray_image(look[0], muted=look[1])
             icon.title = f"MusicMatch: {self._headline()}"[:120]
             icon.update_menu()
         except Exception as exc:
@@ -322,6 +327,32 @@ class Service:
 
     def _toggle_pause(self) -> None:
         save_setting("sync_enabled", not self._sync_enabled())
+
+
+def _use_template_menu_bar_icon() -> None:
+    """Make pystray's status item a template image so macOS tints it like 1Password."""
+    import io
+
+    import AppKit
+    import Foundation
+    from PIL import Image as PILImage
+    from pystray import _darwin
+
+    def _assert_image(self):
+        thickness = float(self._status_bar.thickness() or 22)
+        pixel = max(44, int(thickness * 2))
+        source = self._icon.convert("RGBA").resize((pixel, pixel), PILImage.LANCZOS)
+        buf = io.BytesIO()
+        source.save(buf, "PNG")
+        ns = AppKit.NSImage.alloc().initWithData_(Foundation.NSData(buf.getvalue()))
+        if ns is None:
+            return
+        ns.setSize_((thickness, thickness))
+        ns.setTemplate_(True)
+        self._icon_image = ns
+        self._status_item.button().setImage_(ns)
+
+    _darwin.Icon._assert_image = _assert_image
 
 
 def _hide_dock_icon() -> None:

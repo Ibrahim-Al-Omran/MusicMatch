@@ -6,6 +6,7 @@ from unittest import mock
 from musicmatch import app
 from musicmatch.app import AlreadyRunning, _acquire_instance_lock, read_color_cache, write_color_cache
 from musicmatch.config import Config
+from musicmatch.logo import menu_bar_icon
 
 
 class InstanceLockTests(unittest.TestCase):
@@ -34,6 +35,16 @@ class ColorCacheTests(unittest.TestCase):
             loaded, _ = read_color_cache(cfg)
             self.assertEqual(loaded, colors)
             self.assertEqual(read_color_cache(other)[0], {})
+
+
+class LogoTests(unittest.TestCase):
+    def test_menu_bar_icon_is_a_black_template_glyph(self):
+        img = menu_bar_icon(44)
+        self.assertEqual(img.size, (44, 44))
+        self.assertGreater(img.getextrema()[3][1], 0)  # has some opaque pixels
+        opaque = [px[:3] for px in img.getdata() if px[3] > 0]
+        self.assertTrue(opaque)
+        self.assertTrue(all(px == (0, 0, 0) for px in opaque))
 
 
 if __name__ == "__main__":

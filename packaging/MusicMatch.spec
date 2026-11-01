@@ -41,6 +41,9 @@ if sys.platform == "darwin":
             "CFBundleDisplayName": "MusicMatch",
             "CFBundleShortVersionString": VERSION,
             "NSHighResolutionCapable": True,
+            # Menu-bar app: the note lives in the top bar (like 1Password). The window
+            # still opens from that icon; the Dock stays clear while only the service runs.
+            "LSUIElement": True,
             # macOS asks before an app may talk to devices on the home network.
             "NSLocalNetworkUsageDescription": "MusicMatch finds and controls the smart lights on your network.",
         },
