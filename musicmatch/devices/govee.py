@@ -10,7 +10,7 @@ import socket
 import threading
 from contextlib import contextmanager
 
-from .base import RGB, Device, collect, join_brightness, split_brightness, udp_socket
+from .base import RGB, Device, collect, join_brightness, send_discovery, split_brightness, udp_socket
 
 MULTICAST = ("239.255.255.250", 4001)
 REPLY_PORT, CONTROL_PORT = 4002, 4003
@@ -20,7 +20,11 @@ _reply_lock = threading.Lock()
 def _reply_socket(timeout: float) -> socket.socket:
     s = udp_socket(timeout)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("", REPLY_PORT))
+    try:
+        s.bind(("", REPLY_PORT))
+    except OSError:
+        s.close()
+        raise
     return s
 
 
@@ -31,13 +35,9 @@ def _msg(cmd: str, data: dict) -> bytes:
 def discover(timeout: float) -> list[dict]:
     found = {}
     with _reply_lock:
-        try:
-            s = _reply_socket(timeout)
-        except OSError:
-            return []
-        with s:
+        with _reply_socket(timeout) as s:
             s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-            s.sendto(_msg("scan", {"account_topic": "reserve"}), MULTICAST)
+            send_discovery(s, _msg("scan", {"account_topic": "reserve"}), MULTICAST)
             for data, ip in collect(s, timeout):
                 try:
                     d = json.loads(data)["msg"]["data"]

@@ -8,7 +8,7 @@ import socket
 import struct
 from contextlib import contextmanager
 
-from .base import RGB, Device, collect, udp_socket
+from .base import RGB, Device, collect, send_discovery, udp_socket
 
 PORT = 56700
 GET_SERVICE, STATE_SERVICE = 2, 3
@@ -45,7 +45,7 @@ def _parse_state(payload: bytes) -> tuple[RGB, bool, str]:
 def discover(timeout: float) -> list[dict]:
     found: dict[str, dict] = {}
     with udp_socket(timeout, broadcast=True) as s:
-        s.sendto(_packet(GET_SERVICE, tagged=True), ("255.255.255.255", PORT))
+        send_discovery(s, _packet(GET_SERVICE, tagged=True), ("255.255.255.255", PORT))
         for data, ip in collect(s, min(timeout, 1.5)):
             msg = _parse(data)
             if msg and msg[0] == STATE_SERVICE:

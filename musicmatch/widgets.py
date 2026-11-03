@@ -29,6 +29,80 @@ DEFAULT_ACCENT = (255, 159, 90)
 RGBf = tuple[float, float, float]
 
 
+class ThemedScrollbar(tk.Canvas):
+    def __init__(self, parent, orient, command):
+        super().__init__(parent, width=12, height=12, bg=BG,
+                         highlightthickness=0, bd=0, takefocus=True)
+        self.vertical = orient == "vertical"
+        self.command = command
+        self.first, self.last = 0.0, 1.0
+        self._drag = None
+        self._hover = False
+        self.bind("<Configure>", self._draw)
+        self.bind("<Enter>", lambda _event: self._highlight(True))
+        self.bind("<Leave>", lambda _event: self._highlight(False))
+        self.bind("<Button-1>", self._press)
+        self.bind("<B1-Motion>", self._motion)
+        self.bind("<ButtonRelease-1>", self._release)
+        for key, amount in (("<Up>", -1), ("<Down>", 1), ("<Left>", -1), ("<Right>", 1)):
+            self.bind(key, lambda _event, amount=amount: self.command("scroll", amount, "units"))
+        for key, amount in (("<Prior>", -1), ("<Next>", 1)):
+            self.bind(key, lambda _event, amount=amount: self.command("scroll", amount, "pages"))
+        self.bind("<Home>", lambda _event: self.command("moveto", 0))
+        self.bind("<End>", lambda _event: self.command("moveto", 1))
+
+    def set(self, first, last):
+        self.first, self.last = float(first), float(last)
+        self._draw()
+
+    def _geometry(self):
+        length = self.winfo_height() if self.vertical else self.winfo_width()
+        length = max(1, length - 4)
+        thumb = min(length, max(24, length * (self.last - self.first)))
+        travel = length - thumb
+        span = 1 - (self.last - self.first)
+        start = 2 + (travel * self.first / span if span > 0 else 0)
+        return start, thumb, travel, span
+
+    def _draw(self, _event=None):
+        self.delete("thumb")
+        if self.last - self.first >= 1:
+            return
+        start, thumb, _travel, _span = self._geometry()
+        color = TEXT_3 if self._hover or self._drag is not None else CONTROL_HI
+        coords = (6, start + 3, 6, start + thumb - 3) if self.vertical else (start + 3, 6, start + thumb - 3, 6)
+        self.create_line(*coords, fill=color, width=6, capstyle="round", tags="thumb")
+
+    def _highlight(self, active):
+        self._hover = active
+        self._draw()
+
+    def _press(self, event):
+        self.focus_set()
+        if self.last - self.first >= 1:
+            return
+        position = event.y if self.vertical else event.x
+        start, thumb, _travel, _span = self._geometry()
+        if start <= position <= start + thumb:
+            self._drag = (position, self.first)
+        else:
+            self.command("scroll", -1 if position < start else 1, "pages")
+        self._draw()
+
+    def _motion(self, event):
+        if self._drag is None:
+            return
+        position = event.y if self.vertical else event.x
+        origin, first = self._drag
+        _start, _thumb, travel, span = self._geometry()
+        if travel > 0:
+            self.command("moveto", max(0, min(span, first + (position - origin) * span / travel)))
+
+    def _release(self, _event):
+        self._drag = None
+        self._draw()
+
+
 class ScrollableFrame(tk.Frame):
     def __init__(self, parent):
         super().__init__(parent, bg=BG)
@@ -36,8 +110,8 @@ class ScrollableFrame(tk.Frame):
         self.columnconfigure(0, weight=1)
         self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0,
                                 xscrollincrement=20, yscrollincrement=20, takefocus=True)
-        vertical = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        horizontal = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
+        vertical = ThemedScrollbar(self, orient="vertical", command=self.canvas.yview)
+        horizontal = ThemedScrollbar(self, orient="horizontal", command=self.canvas.xview)
         self.canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
         self.canvas.grid(row=0, column=0, sticky="nsew")
         vertical.grid(row=0, column=1, sticky="ns")

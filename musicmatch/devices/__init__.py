@@ -68,6 +68,7 @@ def discover(timeout: float = 3.0, hue_keys: dict[str, str] | None = None) -> tu
 
     Returns (lights found, Hue bridges that need their link button pressed)."""
     lights: list[dict] = []
+    errors = []
     with ThreadPoolExecutor(len(_SCANNERS) + 1) as pool:
         jobs = {name: pool.submit(scan, timeout) for name, scan in _SCANNERS.items()}
         hue_job = pool.submit(hue.discover, timeout, hue_keys or {})
@@ -76,11 +77,16 @@ def discover(timeout: float = 3.0, hue_keys: dict[str, str] | None = None) -> tu
                 lights += job.result()
             except Exception as exc:
                 log.debug("%s scan failed: %s", name, exc)
+                errors.append(f"{DRIVERS[name].brand}: {exc}")
         try:
             hue_lights, unpaired = hue_job.result()
         except Exception as exc:
             log.debug("Hue scan failed: %s", exc)
+            errors.append(f"Hue: {exc}")
             hue_lights, unpaired = [], []
+    if errors and not (lights or hue_lights or unpaired):
+        raise RuntimeError("; ".join(errors) + ". Check Local Network permission on Mac, LAN access in your VPN/firewall, "
+                           "and whether another lighting app is using the discovery port.")
     return lights + hue_lights, unpaired
 
 

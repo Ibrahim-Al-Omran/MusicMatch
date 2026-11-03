@@ -30,6 +30,8 @@ The computer running MusicMatch just needs to be on the **same Wi-Fi as your lig
 
 The window is resizable on Mac and Windows. In a smaller window, use the scrollbars or mouse wheel / trackpad to reach all controls; Shift-scroll moves horizontally.
 
+**Connect opens your default browser on purpose:** sign in to Spotify and click **Agree**. Leave MusicMatch running; the browser will show a return-to-MusicMatch message and the app will say **Connected as ...**. You can then close the tab. If Spotify shows a redirect-URI error, register exactly the URI shown in MusicMatch in your Spotify app's settings (use 127.0.0.1, not localhost). Login waits up to three minutes; if it expires, click **Connect** again. If the callback port is already in use, quit any other copy of MusicMatch before retrying.
+
 MusicMatch checks for updates in the background when opened and daily while the window stays running, with network checks limited to once every 24 hours. When a newer release has a ZIP ready for your platform, a banner offers **Download**. This opens the ZIP in your browser; it does not install or replace the app automatically. Offline or failed checks are silent.
 
 Every push to main builds both apps in GitHub Actions, including signing and notarizing the Mac app. After both builds succeed, the workflow assigns a new version and publishes both ZIPs together as the latest GitHub Release. The download links above and in-app update checks then use that release. Builds are also available in the run's **Artifacts** section. CI embeds the chosen release version in both apps; the source VERSION file sets the minimum next version. Manual runs on other branches create artifacts only.
@@ -38,6 +40,7 @@ Every push to main builds both apps in GitHub Actions, including signing and not
 
 - Keep the computer and lights on the same home network, not an isolated guest network.
 - A VPN can block local discovery. Try disconnecting it and clicking **Find** again, or enable its **Allow LAN / local network** option if available. MusicMatch does not change your VPN settings.
+- On Mac, discovery also sends on active IPv4 LAN interfaces rather than relying only on the default route. This is VPN-provider-neutral, but cannot override a VPN or firewall that blocks LAN traffic. Actual discovery socket errors now appear in the app instead of being silently treated as no lights found.
 - On Mac, enable **MusicMatch** in **System Settings > Privacy & Security > Local Network**, then quit and reopen MusicMatch if needed.
 - Govee and Yeelight need **LAN Control** enabled in their own apps. For Hue, press the bridge button when prompted.
 

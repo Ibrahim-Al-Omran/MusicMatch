@@ -3,20 +3,33 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
 from flux_led import BulbScanner, WifiLedBulb
 
-from .base import RGB, Device
+from .base import RGB, Device, lan_interfaces
 
 log = logging.getLogger(__name__)
 
 
 def discover(timeout: float) -> list[dict]:
-    return [
-        {"type": "magichome", "host": d["ipaddr"], "id": d.get("id", ""), "name": "Magic Home"}
-        for d in BulbScanner().scan(timeout=max(1, round(timeout)))
-    ]
+    targets = [None] + list(dict.fromkeys(broadcast for _name, _address, broadcast in lan_interfaces()))
+    found = {}
+    errors = []
+    with ThreadPoolExecutor(len(targets)) as pool:
+        jobs = [pool.submit(BulbScanner().scan, timeout=max(1, round(timeout)), address=target)
+                for target in targets]
+        for job in jobs:
+            try:
+                for bulb in job.result():
+                    found[bulb["ipaddr"]] = {"type": "magichome", "host": bulb["ipaddr"],
+                                              "id": bulb.get("id", ""), "name": "Magic Home"}
+            except OSError as exc:
+                errors.append(exc)
+    if len(errors) == len(targets):
+        raise errors[0]
+    return list(found.values())
 
 
 class _Session:

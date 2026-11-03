@@ -72,6 +72,7 @@ class App:
         self.cfg = self._load()
         self._save_job: str | None = None
         self._loading = False
+        self._connecting_spotify = False
         self._config_mtime = self._read_mtime()
         self.accent = w.DEFAULT_ACCENT
         self._accented: list = []
@@ -650,6 +651,10 @@ class App:
         self._background(work)
 
     def _connect_spotify(self) -> None:
+        if self._connecting_spotify:
+            self._set_status("Spotify login is already open. Sign in and click Agree in your browser, then return here. "
+                             "The request expires after three minutes if you need to try again.")
+            return
         self._changed()
         if not self.cfg.spotify_client_id or not self.cfg.spotify_client_secret:
             messagebox.showinfo(
@@ -660,14 +665,17 @@ class App:
             )
             return
         self._save()
-        TOKEN_CACHE_PATH.unlink(missing_ok=True)
+        self._connecting_spotify = True
         self.card_text(self.spotify_text, "Click Agree in your browser...", w.TEXT_2)
+        self._set_status("Opening Spotify in your default browser is normal. Sign in and click Agree; "
+                         "MusicMatch will connect automatically when Spotify redirects back. "
+                         f"If Spotify shows a redirect error, its dashboard must use exactly {self.cfg.spotify_redirect_uri}.")
         cfg = self.cfg
 
         def work():
-            from .spotify_client import SpotifyWatcher
+            from .spotify_client import connect_spotify
 
-            self.events.put(("spotify", SpotifyWatcher(cfg).whoami()))
+            self.events.put(("spotify", connect_spotify(cfg)))
 
         self._background(work, error_kind="spotify_error")
 
@@ -762,10 +770,13 @@ class App:
                 self._cover = cover
                 self.hero.show(artwork)
         elif kind == "spotify":
+            self._connecting_spotify = False
             self.card_text(self.spotify_text, f"Connected as {data}", w.TEXT_2)
+            self._set_status(f"Spotify connected as {data}. You can close the browser tab and play some music.")
             if self.keys_card.winfo_ismapped():
                 self._toggle_keys()
         elif kind == "spotify_error":
+            self._connecting_spotify = False
             self.card_text(self.spotify_text, "Not connected", "#e5735f")
             self._set_status(f"Spotify: {data}")
         elif kind == "lights":

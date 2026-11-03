@@ -6,7 +6,7 @@ import json
 import socket
 from contextlib import contextmanager
 
-from .base import RGB, Device, collect, join_brightness, split_brightness, udp_socket
+from .base import RGB, Device, collect, join_brightness, send_discovery, split_brightness, udp_socket
 
 PORT = 38899
 WARM_WHITE = (255, 196, 137)  # stand-in colour while the bulb is in a white/scene mode
@@ -15,7 +15,7 @@ WARM_WHITE = (255, 196, 137)  # stand-in colour while the bulb is in a white/sce
 def discover(timeout: float) -> list[dict]:
     found = {}
     with udp_socket(timeout, broadcast=True) as s:
-        s.sendto(json.dumps({"method": "getPilot", "params": {}}).encode(), ("255.255.255.255", PORT))
+        send_discovery(s, json.dumps({"method": "getPilot", "params": {}}).encode(), ("255.255.255.255", PORT))
         for data, ip in collect(s, timeout):
             try:
                 result = json.loads(data)["result"]

@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import secrets
+import time
+from urllib.parse import parse_qs, urlparse
+import webbrowser
 
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
@@ -42,7 +47,81 @@ def _make_auth(cfg: Config, open_browser: bool = True) -> SpotifyOAuth:
         scope=SCOPE,
         cache_path=str(TOKEN_CACHE_PATH),
         open_browser=open_browser,
+        requests_timeout=10,
     )
+
+
+def connect_spotify(cfg: Config, timeout: float = 180) -> str:
+    redirect = urlparse(cfg.spotify_redirect_uri)
+    try:
+        port = redirect.port
+    except ValueError:
+        port = None
+    if redirect.scheme != "http" or redirect.hostname != "127.0.0.1" or not port or redirect.query or redirect.fragment:
+        raise ValueError("Set the redirect URI in MusicMatch and Spotify's dashboard to "
+                         "http://127.0.0.1:8888/callback, then try Connect again.")
+    state = secrets.token_urlsafe(32)
+    result = {}
+
+    class Callback(BaseHTTPRequestHandler):
+        def log_message(self, _format, *args):
+            pass
+
+        def do_GET(self):
+            callback = urlparse(self.path)
+            if callback.path != (redirect.path or "/"):
+                self.send_error(404)
+                return
+            values = parse_qs(callback.query)
+            if values.get("state") != [state]:
+                self.send_error(400, "Login could not be verified. Return to MusicMatch and try again.")
+                return
+            if values.get("error"):
+                result["error"] = "Spotify permission was declined. Click Connect to try again."
+                message = "Spotify was not connected. You can return to MusicMatch."
+            elif len(values.get("code", [])) == 1:
+                result["code"] = values["code"][0]
+                message = "Authorization received. Return to MusicMatch to finish connecting. You can close this tab."
+            else:
+                self.send_error(400)
+                return
+            body = ("<!doctype html><meta charset='utf-8'><title>MusicMatch</title><h2>MusicMatch</h2><p>"
+                    + message + "</p>").encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+
+    class CallbackServer(HTTPServer):
+        def get_request(self):
+            connection, address = super().get_request()
+            connection.settimeout(2)
+            return connection, address
+
+    try:
+        server = CallbackServer(("127.0.0.1", port), Callback)
+    except OSError as exc:
+        raise ConnectionError(f"Cannot receive Spotify's reply on port {port}. Close another MusicMatch "
+                              "window or any app using that port, then try Connect again.") from exc
+    with server:
+        auth = _make_auth(cfg, open_browser=False)
+        auth.state = state
+        if not webbrowser.open(auth.get_authorize_url(state=state)):
+            raise ConnectionError("Could not open your browser for Spotify login. Check your default browser and try again.")
+        deadline = time.monotonic() + timeout
+        while not result and time.monotonic() < deadline:
+            server.timeout = min(1, max(0.01, deadline - time.monotonic()))
+            server.handle_request()
+    if not result:
+        raise TimeoutError("Spotify login timed out. Click Connect, sign in and click Agree in your browser. "
+                           f"If Spotify shows a redirect error, register exactly {cfg.spotify_redirect_uri} in its dashboard.")
+    if "error" in result:
+        raise ConnectionError(result["error"])
+    token = auth.get_access_token(code=result["code"], check_cache=False, as_dict=False)
+    me = spotipy.Spotify(auth=token, requests_timeout=10).current_user()
+    return me.get("display_name") or me["id"]
 
 
 def cached_login(cfg: Config) -> str | None:

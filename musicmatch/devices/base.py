@@ -6,7 +6,10 @@ are Magic Home controllers."""
 
 from __future__ import annotations
 
+import re
 import socket
+import subprocess
+import sys
 from contextlib import contextmanager
 from typing import Iterator, Protocol
 
@@ -72,6 +75,53 @@ def udp_socket(timeout: float, broadcast: bool = False) -> socket.socket:
     return s
 
 
+def lan_interfaces() -> list[tuple[str, str, str]]:
+    """Active macOS IPv4 LAN adapters as (name, address, subnet broadcast)."""
+    if sys.platform != "darwin":
+        return []
+    try:
+        output = subprocess.run(["/sbin/ifconfig", "-a"], capture_output=True,
+                                text=True, timeout=3, check=True).stdout
+    except (OSError, subprocess.SubprocessError):
+        return []
+    interfaces = []
+    for block in re.split(r"(?=^\S+: flags=)", output, flags=re.MULTILINE):
+        header = block.splitlines()[0] if block else ""
+        if not all(flag in header for flag in ("UP", "BROADCAST", "MULTICAST")):
+            continue
+        if "POINTOPOINT" in header or "LOOPBACK" in header or "status: inactive" in block:
+            continue
+        name = header.split(":", 1)[0]
+        for address, broadcast in re.findall(r"\binet (\d+\.\d+\.\d+\.\d+) netmask \S+ broadcast (\d+\.\d+\.\d+\.\d+)", block):
+            interfaces.append((name, address, broadcast))
+    return interfaces
+
+
+def send_discovery(sock: socket.socket, payload: bytes, target: tuple[str, int]) -> None:
+    """Try each Mac LAN adapter, then the default route; leave replies unbound."""
+    sent = False
+    for name, address, broadcast in lan_interfaces():
+        try:
+            sock.setsockopt(socket.IPPROTO_IP, getattr(socket, "IP_BOUND_IF", 25), socket.if_nametoindex(name))
+            if target[0] == "255.255.255.255":
+                sock.sendto(payload, (broadcast, target[1]))
+            else:
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(address))
+                sock.sendto(payload, target)
+            sent = True
+        except OSError:
+            pass
+        finally:
+            sock.setsockopt(socket.IPPROTO_IP, getattr(socket, "IP_BOUND_IF", 25), 0)
+            if target[0] != "255.255.255.255":
+                sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton("0.0.0.0"))
+    try:
+        sock.sendto(payload, target)
+    except OSError:
+        if not sent:
+            raise
+
+
 def collect(sock: socket.socket, seconds: float) -> Iterator[tuple[bytes, str]]:
     """Yield (data, sender_ip) until `seconds` have passed."""
     import time
@@ -83,6 +133,6 @@ def collect(sock: socket.socket, seconds: float) -> Iterator[tuple[bytes, str]]:
             data, (ip, _port) = sock.recvfrom(4096)
         except ConnectionResetError:  # Windows reports an ICMP "port unreachable" this way
             continue
-        except OSError:
+        except socket.timeout:
             return
         yield data, ip

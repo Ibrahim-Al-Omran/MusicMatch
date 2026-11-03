@@ -7,7 +7,7 @@ import json
 import socket
 from contextlib import contextmanager
 
-from .base import RGB, Device, collect, join_brightness, split_brightness, udp_socket
+from .base import RGB, Device, collect, join_brightness, send_discovery, split_brightness, udp_socket
 
 SEARCH = (b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1982\r\n"
           b"MAN: \"ssdp:discover\"\r\nST: wifi_bulb\r\n")
@@ -28,7 +28,7 @@ def discover(timeout: float) -> list[dict]:
     found = {}
     with udp_socket(timeout) as s:
         s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-        s.sendto(SEARCH, ("239.255.255.250", 1982))
+        send_discovery(s, SEARCH, ("239.255.255.250", 1982))
         for data, ip in collect(s, timeout):
             h = _headers(data)
             if "set_rgb" not in h.get("support", ""):

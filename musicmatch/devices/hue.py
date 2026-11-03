@@ -10,7 +10,7 @@ from contextlib import contextmanager
 
 import requests
 
-from .base import RGB, Device, collect, udp_socket
+from .base import RGB, Device, collect, send_discovery, udp_socket
 
 SSDP = (b"M-SEARCH * HTTP/1.1\r\nHOST: 239.255.255.250:1900\r\nMAN: \"ssdp:discover\"\r\n"
         b"MX: 2\r\nST: urn:schemas-upnp-org:device:basic:1\r\n\r\n")
@@ -34,7 +34,7 @@ def find_bridges(timeout: float) -> dict[str, str]:
         job = pool.submit(cloud)
         with udp_socket(timeout) as s:
             s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-            s.sendto(SSDP, ("239.255.255.250", 1900))
+            send_discovery(s, SSDP, ("239.255.255.250", 1900))
             for data, ip in collect(s, timeout):
                 m = re.search(rb"hue-bridgeid:\s*([0-9A-Fa-f]+)", data)
                 if m:
