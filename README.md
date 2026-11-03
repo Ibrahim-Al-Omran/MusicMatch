@@ -26,6 +26,15 @@ The computer running MusicMatch just needs to be on the **same Wi-Fi as your lig
 2. **Spotify** — **Keys → Create an app on Spotify** (the account needs Premium). Set the Redirect URI MusicMatch shows (`http://127.0.0.1:8888/callback`), tick **Web API**, paste the Client ID and secret, **Connect**. Add other household accounts under User Management (max 5).
 3. **Play** something on Spotify. Lights follow within about a second.
 
+The window is resizable on Mac and Windows. In a smaller window, use the scrollbars or mouse wheel / trackpad to reach all controls; Shift-scroll moves horizontally.
+
+### Lights not found?
+
+- Keep the computer and lights on the same home network, not an isolated guest network.
+- A VPN can block local discovery. Try disconnecting it and clicking **Find** again, or enable its **Allow LAN / local network** option if available. MusicMatch does not change your VPN settings.
+- On Mac, enable **MusicMatch** in **System Settings > Privacy & Security > Local Network**, then quit and reopen MusicMatch if needed.
+- Govee and Yeelight need **LAN Control** enabled in their own apps. For Hue, press the bridge button when prompted.
+
 ## From source
 
 Python 3.10+. Clone, then double-click `Start MusicMatch.cmd` (Windows) or `Start MusicMatch.command` (Mac).

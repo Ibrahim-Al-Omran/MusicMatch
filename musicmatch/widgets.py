@@ -29,6 +29,76 @@ DEFAULT_ACCENT = (255, 159, 90)
 RGBf = tuple[float, float, float]
 
 
+class ScrollableFrame(tk.Frame):
+    def __init__(self, parent):
+        super().__init__(parent, bg=BG)
+        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=1)
+        self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0,
+                                xscrollincrement=20, yscrollincrement=20, takefocus=True)
+        vertical = tk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
+        horizontal = tk.Scrollbar(self, orient="horizontal", command=self.canvas.xview)
+        self.canvas.configure(yscrollcommand=vertical.set, xscrollcommand=horizontal.set)
+        self.canvas.grid(row=0, column=0, sticky="nsew")
+        vertical.grid(row=0, column=1, sticky="ns")
+        horizontal.grid(row=1, column=0, sticky="ew")
+        self.content = tk.Frame(self.canvas, bg=BG)
+        self._window = self.canvas.create_window(0, 0, window=self.content, anchor="nw")
+        self._wheel_remainder = {"x": 0.0, "y": 0.0}
+        self._sync_job = None
+        self.winfo_toplevel().bind("<Configure>", self._content_changed, add="+")
+        self.canvas.bind("<Configure>", self._sync_content)
+        self.winfo_toplevel().bind("<MouseWheel>", self._mousewheel, add="+")
+        if sys.platform not in ("win32", "darwin"):
+            self.winfo_toplevel().bind("<Button-4>", self._mousewheel, add="+")
+            self.winfo_toplevel().bind("<Button-5>", self._mousewheel, add="+")
+        for key, amount in (("<Prior>", -1), ("<Next>", 1)):
+            self.canvas.bind(key, lambda _event, amount=amount: self.canvas.yview_scroll(amount, "pages"))
+
+    def fit_content(self, max_width: int, max_height: int) -> None:
+        self.update_idletasks()
+        self.canvas.configure(width=min(self.content.winfo_reqwidth(), max_width),
+                              height=min(self.content.winfo_reqheight(), max_height))
+
+    def _sync_content(self, _event=None) -> None:
+        self._sync_job = None
+        content_width = self.content.winfo_reqwidth()
+        width = max(content_width, self.canvas.winfo_width())
+        height = max(self.content.winfo_reqheight(), self.canvas.winfo_height())
+        self.canvas.coords(self._window, (width - content_width) // 2, 0)
+        self.canvas.configure(scrollregion=(0, 0, width, height))
+
+    def _content_changed(self, event) -> None:
+        widget = event.widget
+        while widget is not None and widget is not self.content:
+            widget = getattr(widget, "master", None)
+        if widget is not None and self._sync_job is None:
+            self._sync_job = self.after_idle(self._sync_content)
+
+    def _mousewheel(self, event):
+        widget = event.widget
+        while widget is not None and widget is not self:
+            widget = getattr(widget, "master", None)
+        if widget is None:
+            return
+        axis = "x" if event.state & 0x1 else "y"
+        view = self.canvas.xview if axis == "x" else self.canvas.yview
+        if view() == (0.0, 1.0):
+            return
+        button = getattr(event, "num", None)
+        if button in (4, 5):
+            movement = -3 if button == 4 else 3
+        else:
+            movement = -event.delta if sys.platform == "darwin" else -event.delta / 120 * 3
+        self._wheel_remainder[axis] += movement
+        units = int(self._wheel_remainder[axis])
+        self._wheel_remainder[axis] -= units
+        scroll = self.canvas.xview_scroll if axis == "x" else self.canvas.yview_scroll
+        if units:
+            scroll(units, "units")
+        return "break"
+
+
 def to_rgb(color: str) -> RGBf:
     color = color.lstrip("#")
     return tuple(int(color[i : i + 2], 16) for i in (0, 2, 4))  # type: ignore[return-value]

@@ -97,8 +97,11 @@ class App:
 
         root.title("MusicMatch")
         root.configure(bg=w.BG)
-        root.resizable(False, False)
+        root.resizable(True, True)
+        root.minsize(round(320 * self.s), round(240 * self.s))
         self._build()
+        self.viewport.fit_content(max_width=max(320, root.winfo_screenwidth() - 100),
+                                  max_height=max(240, root.winfo_screenheight() - 180))
         _style_title_bar(root)
         _set_icon(root)
         logging.getLogger().addHandler(QueueLogHandler(self.events))
@@ -123,7 +126,9 @@ class App:
     def _build(self) -> None:
         s, f = self.s, self.fonts
         full_w = CARD_W * 2 + GAP
-        main = tk.Frame(self.root, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
+        self.viewport = w.ScrollableFrame(self.root)
+        self.viewport.pack(fill="both", expand=True)
+        main = tk.Frame(self.viewport.content, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
         main.pack()
 
         # Header: wordmark + sync switch
@@ -230,7 +235,8 @@ class App:
         if not (self.cfg.spotify_client_id and not self.cfg.spotify_client_id.startswith("PASTE_")):
             self._toggle_keys()
 
-        self.status = tk.Label(main, text="", font=f["small"], fg=w.TEXT_3, bg=w.BG, anchor="w")
+        self.status = tk.Label(main, text="", font=f["small"], fg=w.TEXT_3, bg=w.BG,
+                               anchor="w", justify="left", wraplength=round(full_w * s))
         self.status.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(round(14 * s), 0))
 
     def _build_keys_card(self, parent) -> tk.Frame:
@@ -584,8 +590,10 @@ class App:
         elif found:
             self._set_status(f"Found {len(found)} light(s)" + (f", {new} new." if new else "."))
         else:
-            self._set_status("No lights found. Is this computer on the same Wi-Fi? Govee and Yeelight "
-                             "need LAN Control switched on in their apps.")
+            self._set_status("No lights found. Use the same home network (not guest Wi-Fi), and try "
+                             "disconnecting the VPN or allowing LAN access. On Mac, enable MusicMatch "
+                             "in System Settings > Privacy & Security > Local Network. Govee and "
+                             "Yeelight also need LAN Control switched on in their apps.")
 
     def _pair_hue(self, bridges: list[dict]) -> None:
         self._set_status("Found a Philips Hue bridge: press the round button on top of it now...")
@@ -755,7 +763,7 @@ class App:
         return f"{on} syncing" if on else "All switched off"
 
     def _set_status(self, text: str) -> None:
-        self.status.config(text=text if len(text) < 120 else text[:117] + "...")
+        self.status.config(text=text)
 
     def _quit(self) -> None:
         if self._save_job:
