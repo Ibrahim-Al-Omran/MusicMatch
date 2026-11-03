@@ -2,7 +2,7 @@
 
 Your smart lights follow the album color of whatever's playing on Spotify — phone, TV, PlayStation, Echo, or web.
 
-**Still in the works.** Windows is the smoother path. Mac works, but first launch is blocked by Gatekeeper until you Control-click → Open.
+**Still in the works.** Downloads are available for Windows and Apple Silicon Macs.
 
 ![MusicMatch](screenshot.png)
 
@@ -16,7 +16,7 @@ Finds Magic Home, WiZ, LIFX, Govee, Yeelight, and Hue on your Wi-Fi. Close the w
 | **Mac (Apple Silicon)** | [MusicMatch-macOS.zip](https://github.com/Ibrahim-Al-Omran/MusicMatch/releases/latest/download/MusicMatch-macOS.zip) — unzip, drag to Applications |
 | **Source** | [ZIP](https://github.com/Ibrahim-Al-Omran/MusicMatch/archive/refs/heads/main.zip) or clone below |
 
-Apps aren't signed yet. Windows: SmartScreen → **More info → Run anyway**. Mac: Control-click the app → **Open**. Allow local network / private firewall when asked.
+The Mac download is Developer ID signed and notarized by Apple. Windows is unsigned: SmartScreen → **More info → Run anyway**. Allow local network / private firewall when asked.
 
 ## Setup
 
