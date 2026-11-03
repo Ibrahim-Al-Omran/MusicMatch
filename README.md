@@ -18,6 +18,8 @@ Finds Magic Home, WiZ, LIFX, Govee, Yeelight, and Hue on your Wi-Fi. Close the w
 
 The Mac download is Developer ID signed and notarized by Apple. Windows is unsigned: SmartScreen → **More info → Run anyway**. Allow local network / private firewall when asked.
 
+These download links automatically serve the newest successful main build. Both apps must finish building, including Mac notarization, before a new release replaces the previous downloads.
+
 ## Setup
 
 The computer running MusicMatch just needs to be on the **same Wi-Fi as your lights**.
@@ -30,7 +32,7 @@ The window is resizable on Mac and Windows. In a smaller window, use the scrollb
 
 MusicMatch checks for updates in the background when opened and daily while the window stays running, with network checks limited to once every 24 hours. When a newer release has a ZIP ready for your platform, a banner offers **Download**. This opens the ZIP in your browser; it does not install or replace the app automatically. Offline or failed checks are silent.
 
-Every push to main builds both apps in GitHub Actions, including signing and notarizing the Mac app. Download these builds from the run's **Artifacts** section. Version tags publish the ZIPs to GitHub Releases and make them available to the in-app update check.
+Every push to main builds both apps in GitHub Actions, including signing and notarizing the Mac app. After both builds succeed, the workflow assigns a new version and publishes both ZIPs together as the latest GitHub Release. The download links above and in-app update checks then use that release. Builds are also available in the run's **Artifacts** section. CI embeds the chosen release version in both apps; the source VERSION file sets the minimum next version. Manual runs on other branches create artifacts only.
 
 ### Lights not found?
 

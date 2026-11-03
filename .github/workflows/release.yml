@@ -1,6 +1,4 @@
-# Builds the downloadable apps. Push a tag like v1.0.0 to publish a GitHub release with
-# MusicMatch-Windows.zip and MusicMatch-macOS.zip attached; "Run workflow" on the Actions
-# tab and pushes to main build downloadable artifacts without making a release.
+# Successful main builds publish both ZIPs together as the latest GitHub release.
 name: Build apps
 
 on:
@@ -12,8 +10,27 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: musicmatch-release
+  cancel-in-progress: false
+
 jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      publish: ${{ steps.release.outputs.publish }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Choose release version
+        id: release
+        run: python packaging/release_version.py
+
   build:
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -29,6 +46,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Set app version
+        run: python packaging/release_version.py --write "${{ needs.prepare.outputs.version }}"
 
       - name: Install
         run: |
@@ -169,9 +189,43 @@ jobs:
           name: ${{ matrix.asset }}
           path: ${{ matrix.asset }}
 
-      - name: Attach to release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+  publish:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
         with:
-          files: ${{ matrix.asset }}
-          generate_release_notes: true
+          pattern: MusicMatch-*.zip
+          merge-multiple: true
+          path: release-assets
+
+      - name: Publish latest downloads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.prepare.outputs.tag }}
+        run: |
+          set -euo pipefail
+          test -s release-assets/MusicMatch-Windows.zip
+          test -s release-assets/MusicMatch-macOS.zip
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            latest_sha="$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq '.object.sha')"
+            if [ "$latest_sha" != "$GITHUB_SHA" ]; then
+              echo "A newer main push exists; leaving the current release unchanged."
+              exit 0
+            fi
+          fi
+          if draft="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            if [ "$draft" != "true" ]; then
+              echo "This version is already published; leaving its downloads unchanged."
+              exit 0
+            fi
+            gh release upload "$RELEASE_TAG" release-assets/MusicMatch-Windows.zip \
+              release-assets/MusicMatch-macOS.zip --clobber
+            gh release edit "$RELEASE_TAG" --draft=false --latest
+          else
+            gh release create "$RELEASE_TAG" release-assets/MusicMatch-Windows.zip \
+              release-assets/MusicMatch-macOS.zip --target "$GITHUB_SHA" \
+              --title "MusicMatch $RELEASE_TAG" --generate-notes --latest
+          fi
