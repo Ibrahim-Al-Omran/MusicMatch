@@ -105,8 +105,9 @@ class ThemedScrollbar(tk.Canvas):
 
 
 class ScrollableFrame(tk.Frame):
-    def __init__(self, parent):
+    def __init__(self, parent, center_content=True):
         super().__init__(parent, bg=BG)
+        self.center_content = center_content
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
         self.canvas = tk.Canvas(self, bg=BG, highlightthickness=0, bd=0,
@@ -140,7 +141,8 @@ class ScrollableFrame(tk.Frame):
         content_width = self.content.winfo_reqwidth()
         width = max(content_width, self.canvas.winfo_width())
         height = max(self.content.winfo_reqheight(), self.canvas.winfo_height())
-        self.canvas.coords(self._window, (width - content_width) // 2, 0)
+        offset = (width - content_width) // 2 if getattr(self, "center_content", True) else 0
+        self.canvas.coords(self._window, offset, 0)
         self.canvas.configure(scrollregion=(0, 0, width, height))
 
     def _content_changed(self, event) -> None:
@@ -245,6 +247,47 @@ def shadowed_knob(p: Painter, cx: float, cy: float, r: float, s: float) -> None:
     p.circle(cx, cy, r, fill="#ffffff")
 
 
+@functools.lru_cache(maxsize=64)
+def _panel_corners(radius: int, fill) -> tuple[Image.Image, ...]:
+    painter = Painter(radius * 2, radius * 2)
+    painter.rrect(0, 0, radius * 2, radius * 2, radius, fill=fill)
+    image = painter.image()
+    return tuple(image.crop(box) for box in ((0, 0, radius, radius),
+                 (radius, 0, radius * 2, radius), (0, radius, radius, radius * 2),
+                 (radius, radius, radius * 2, radius * 2)))
+
+
+def rounded_panel(width: int, height: int, radius: float, fill) -> Image.Image:
+    """Fill at display resolution, reusing small antialiased corners."""
+    radius = max(1, min(round(radius), width // 2, height // 2))
+    image = Image.new("RGBA", (width, height), fill)
+    for corner, position in zip(_panel_corners(radius, fill),
+                                ((0, 0), (width - radius, 0), (0, height - radius),
+                                 (width - radius, height - radius))):
+        image.paste(corner, position)
+    return image
+
+
+def resize_banner(image: Image.Image, width: int, left: int, right: int) -> Image.Image:
+    """Stretch only the background between the fixed cover and right corners."""
+    source_width, height = image.size
+    left = min(left, source_width // 2, width // 2)
+    right = min(right, source_width - left - 1, width - left - 1)
+    result = Image.new("RGBA", (width, height))
+    result.paste(image.crop((0, 0, left, height)), (0, 0))
+    middle = image.crop((left, 0, source_width - right, height))
+    result.paste(middle.resize((width - left - right, height), Image.BILINEAR), (left, 0))
+    result.paste(image.crop((source_width - right, 0, source_width, height)), (width - right, 0))
+    return result
+
+
+@functools.lru_cache(maxsize=16)
+def _slider_knob(height: int, radius: float, scale: float) -> Image.Image:
+    painter = Painter(height, height)
+    shadowed_knob(painter, height / 2, height / 2, radius, scale)
+    return painter.image()
+
+
 class Control(tk.Canvas):
     def __init__(self, parent: tk.Misc, w: float, h: float, bg: str = CARD):
         super().__init__(parent, width=round(w), height=round(h), bg=bg,
@@ -337,18 +380,22 @@ class Slider(Control):
                 self.on_change(value)
 
     def draw(self) -> None:
-        s, p = self.s, Painter(self.w, self.h)
         try:
             value = float(self.var.get())
         except (tk.TclError, ValueError):
             value = self.lo
         frac = (min(self.hi, max(self.lo, value)) - self.lo) / (self.hi - self.lo)
-        pad, cy, th = self.knob_r + 1, self.h / 2, 4 * s
+        pad, cy, th = self.knob_r + 1, self.h / 2, 4 * self.s
         x = pad + frac * (self.w - 2 * pad)
-        p.rrect(pad - th / 2, cy - th / 2, self.w - pad + th / 2, cy + th / 2, th / 2, fill=CONTROL_HI)
-        p.rrect(pad - th / 2, cy - th / 2, x + th / 2, cy + th / 2, th / 2, fill=to_hex(self.accent))
-        shadowed_knob(p, x, cy, self.knob_r, s)
-        self.show(p)
+        image = Image.new("RGBA", (self.w, self.h))
+        track_width, track_height = max(1, round(self.w - 2 * pad + th)), max(1, round(th))
+        position = (round(pad - th / 2), round(cy - th / 2))
+        image.alpha_composite(rounded_panel(track_width, track_height, th / 2, CONTROL_HI), position)
+        active_width = min(track_width, max(1, round(x - pad + th)))
+        image.alpha_composite(rounded_panel(active_width, track_height, th / 2, to_hex(self.accent)), position)
+        image.alpha_composite(_slider_knob(self.h, self.knob_r, self.s), (round(x - self.h / 2), 0))
+        self._photo = ImageTk.PhotoImage(image)
+        self.itemconfig(self._img_id, image=self._photo)
 
 
 class Segmented(Control):
@@ -530,6 +577,7 @@ class Card(tk.Canvas):
     def finish(self) -> None:
         self._background_id = self.create_image(0, 0, anchor="nw")
         self.bind("<Configure>", self._resize)
+        self.configure(height=round(self.y))
         self._paint()
 
     def _resize(self, event) -> None:
@@ -552,12 +600,12 @@ class Card(tk.Canvas):
 
     def _paint(self) -> None:
         s, h = self.s, round(self.y)
-        self.config(height=h)
-        p = Painter(self.w, h)
-        p.rrect(0, 0, self.w, h, 12 * s, fill=CARD)
+        image = rounded_panel(self.w, h, 12 * s, CARD)
+        draw = ImageDraw.Draw(image)
         for y in self._lines:
-            p.line(14 * s, y, self.w, y, fill=HAIRLINE, width=0.8 * s)
-        self._photo = p.photo()
+            draw.line((round(14 * s), round(y), self.w, round(y)),
+                      fill=HAIRLINE, width=max(1, round(0.8 * s)))
+        self._photo = ImageTk.PhotoImage(image)
         self.itemconfigure(self._background_id, image=self._photo)
         self.tag_lower(self._background_id)
 
@@ -600,6 +648,7 @@ class Hero(tk.Canvas):
         self.artist_id = self.create_text(self.text_x, cy + 6 * s, anchor="w", font=fonts["body"], fill=TEXT_2)
         self.device_id = self.create_text(self.text_x, cy + 28 * s, anchor="w", font=fonts["caps"], fill=TEXT_3)
         self._current: Image.Image | None = None
+        self._resize_source: Image.Image | None = None
         self._photo: ImageTk.PhotoImage | None = None
         self._fade_token = 0
         self._layers: tuple[Image.Image, Image.Image, Image.Image] | None = None
@@ -621,17 +670,18 @@ class Hero(tk.Canvas):
         """Crossfade to artwork made by compose() (which is safe to call off the Tk thread)."""
         if artwork.size != (self.W, self.H):
             return
+        self._resize_source = artwork
         self._crossfade(artwork)
 
-    def resize(self, width: int, color, cover: Image.Image | None) -> None:
+    def resize(self, width: int) -> None:
         if width == self.W:
             return
-        with self._render_lock:
-            self.W = width
-            self._layers = None
+        self.W = width
         self.configure(width=width)
         self.set_text(*self._text)
-        self.show(self.compose(color, cover))
+        if self._resize_source is not None:
+            preview = resize_banner(self._resize_source, width, round(self.text_x), round(18 * self.s))
+            self._crossfade(preview)
 
     def _fit(self, text: str, font, max_w: float) -> str:
         f = tkfont.Font(font=font)
@@ -641,15 +691,13 @@ class Hero(tk.Canvas):
             text = text[:-1]
         return text.rstrip() + "…"
 
-    def _static_layers(self) -> tuple[Image.Image, Image.Image, Image.Image]:
+    def _static_layers(self, width: int) -> tuple[Image.Image, Image.Image, Image.Image]:
         """Card background, its shape mask and the cover shadow: identical for every
         song, so they're drawn once."""
-        if self._layers is None or self._layers[0].size != (self.W, self.H):
-            s, W, H = self.s, self.W, self.H
+        if self._layers is None or self._layers[0].size != (width, self.H):
+            s, W, H = self.s, width, self.H
             base = Image.new("RGBA", (W, H), to_hex(to_rgb(BG)))
-            card = Painter(W, H)
-            card.rrect(0, 0, W, H, 16 * s, fill=CARD)
-            card_img = card.image()
+            card_img = rounded_panel(W, H, 16 * s, CARD)
             base.alpha_composite(card_img)
             x0, y0 = round(self.pad), round((H - self.cover_px) / 2)
             shadow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -658,13 +706,14 @@ class Hero(tk.Canvas):
             self._layers = (base, card_img.getchannel("A"), _soft_blur(shadow, 8 * s))
         return self._layers
 
-    def compose(self, color, cover: Image.Image | None) -> Image.Image:
+    def compose(self, color, cover: Image.Image | None, width: int | None = None) -> Image.Image:
+        width = self.W if width is None else width
         with self._render_lock:
-            return self._compose(color, cover)
+            return self._compose(color, cover, width)
 
-    def _compose(self, color, cover: Image.Image | None) -> Image.Image:
-        s, W, H = self.s, self.W, self.H
-        card, card_mask, shadow = self._static_layers()
+    def _compose(self, color, cover: Image.Image | None, width: int) -> Image.Image:
+        s, W, H = self.s, width, self.H
+        card, card_mask, shadow = self._static_layers(width)
         base = card.copy()
 
         cx, cy = self.pad + self.cover_px / 2, H / 2

@@ -41,8 +41,9 @@ TICK_MS = 150  # how quickly the window reflects a song change (the lights don't
 HIDDEN_TICK_MS = 1000
 LIVENESS_CHECK_S = 3
 CARD_W = 344
-MAX_CONTENT_W = 1120
 GAP = 16
+RESIZE_FRAME_MS = 16
+RESIZE_SETTLE_MS = 150
 GUI_LOCK_PATH = DATA_DIR / ".musicmatch_gui.lock"
 SHOW_PATH = DATA_DIR / ".musicmatch_show"
 HUE_PAIR_SECONDS = 30
@@ -60,7 +61,7 @@ def _blank_placeholder(value: str) -> str:
 def dashboard_layout(viewport_width: int, scale: float) -> tuple[int, int, int]:
     available = max(round(CARD_W * scale), viewport_width - round(40 * scale))
     columns = 2 if available >= round((CARD_W * 2 + GAP) * scale) else 1
-    width = min(available, round(MAX_CONTENT_W * scale))
+    width = available
     card_width = (width - round(GAP * scale) * (columns - 1)) // columns
     return columns, width, card_width
 
@@ -83,6 +84,7 @@ class App:
         self._loading = False
         self._connecting_spotify = False
         self._layout_job = None
+        self._layout_finish_job = None
         self._layout_size = None
         self._config_mtime = self._read_mtime()
         self.accent = w.DEFAULT_ACCENT
@@ -149,7 +151,7 @@ class App:
         self.update_label.pack(side="left", fill="x", expand=True)
         self.update_label.bind("<Configure>", lambda event: self.update_label.configure(
             wraplength=max(1, event.width)))
-        self.viewport = w.ScrollableFrame(self.root)
+        self.viewport = w.ScrollableFrame(self.root, center_content=False)
         self.viewport.pack(fill="both", expand=True)
         main = self.main = tk.Frame(self.viewport.content, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
         main.pack()
@@ -264,9 +266,8 @@ class App:
         self.viewport.canvas.bind("<Configure>", self._queue_layout, add="+")
 
     def _queue_layout(self, _event=None) -> None:
-        if self._layout_job is not None:
-            self.root.after_cancel(self._layout_job)
-        self._layout_job = self.root.after(80, self._resize_layout)
+        if self._layout_job is None:
+            self._layout_job = self.root.after(RESIZE_FRAME_MS, self._resize_layout)
 
     def _resize_layout(self) -> None:
         self._layout_job = None
@@ -288,8 +289,25 @@ class App:
         self.header.configure(width=width)
         self.header.coords(self._sync_window, width, round(18 * self.s))
         self.header.coords(self.sync_lbl, width - round(50 * self.s), round(18 * self.s))
-        self.hero.resize(width, self._track_color if self._track_key else None,
-                         self._cover if self._track_key else None)
+        self.hero.resize(width)
+        self._schedule_resize_finish()
+
+    def _schedule_resize_finish(self) -> None:
+        if self._layout_finish_job is not None:
+            self.root.after_cancel(self._layout_finish_job)
+        self._layout_finish_job = self.root.after(RESIZE_SETTLE_MS, self._finish_resize)
+
+    def _finish_resize(self) -> None:
+        self._layout_finish_job = None
+        key, color = self._track_key, self._track_color
+        cover = self._cover if key else None
+        width = self.hero.W
+
+        def work():
+            artwork = self.hero.compose(color if key else None, cover, width=width)
+            self.events.put(("hero", (key, color, cover, artwork)))
+
+        self._background(work)
 
     def _build_keys_card(self, parent) -> tk.Frame:
         s, f = self.s, self.fonts
@@ -768,7 +786,7 @@ class App:
                 self._handle(kind, data)
         except queue.Empty:
             pass
-        visible = self.root.state() == "normal"
+        visible = self.root.state() not in ("withdrawn", "iconic")
         self._ticks += 1
         self._poll_background_if_changed()
         if not visible or self._ticks % 4 == 0:
@@ -808,8 +826,12 @@ class App:
         elif kind == "hero":
             key, color, cover, artwork = data
             if key == self._track_key and color == self._track_color:
-                self._cover = cover
-                self.hero.show(artwork)
+                if cover is not None or key is None:
+                    self._cover = cover
+                if artwork.size != (self.hero.W, self.hero.H) or (key is not None and cover is None and self._cover is not None):
+                    self._schedule_resize_finish()
+                else:
+                    self.hero.show(artwork)
         elif kind == "spotify":
             self._connecting_spotify = False
             self.card_text(self.spotify_text, f"Connected as {data}", w.TEXT_2)

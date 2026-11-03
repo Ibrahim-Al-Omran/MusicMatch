@@ -3,6 +3,8 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
+from PIL import Image
+
 from musicmatch import gui, updates, widgets
 from musicmatch.config import Config
 
@@ -206,8 +208,11 @@ class BackgroundPollingTests(unittest.TestCase):
 
 
 class ResponsiveLayoutTests(unittest.TestCase):
-    def test_wide_screen_uses_capped_expanded_dashboard(self):
-        self.assertEqual(gui.dashboard_layout(1920, 1), (2, 1120, 552))
+    def test_wide_screen_uses_available_width(self):
+        self.assertEqual(gui.dashboard_layout(1920, 1), (2, 1880, 932))
+
+    def test_ultrawide_screen_has_no_fixed_width_cap(self):
+        self.assertEqual(gui.dashboard_layout(3840, 1), (2, 3800, 1892))
 
     def test_medium_window_has_two_equal_columns(self):
         self.assertEqual(gui.dashboard_layout(900, 1), (2, 860, 422))
@@ -223,7 +228,127 @@ class ResponsiveLayoutTests(unittest.TestCase):
         self.assertEqual(gui.dashboard_layout(800, 1.25), (1, 750, 750))
 
 
+class ResizeSchedulingTests(unittest.TestCase):
+    def test_resize_events_share_a_frame_without_postponing_it(self):
+        application = mock.Mock(_layout_job=None)
+        application.root.after.return_value = "frame"
+        for _event in range(20):
+            gui.App._queue_layout(application)
+        application.root.after.assert_called_once_with(gui.RESIZE_FRAME_MS, application._resize_layout)
+        application.root.after_cancel.assert_not_called()
+
+    def test_layout_reads_latest_width_and_schedules_polish_separately(self):
+        application = mock.Mock(s=1, _layout_size=None, _layout_finish_job=None)
+        application.viewport.canvas.winfo_width.return_value = 1920
+        gui.App._resize_layout(application)
+        application.hero.resize.assert_called_once_with(1880)
+        self.assertIsNone(application._layout_job)
+        application.hero.compose.assert_not_called()
+        application._schedule_resize_finish.assert_called_once()
+
+    def test_polish_waits_for_resize_to_settle(self):
+        application = mock.Mock(_layout_finish_job="old-finish")
+        gui.App._schedule_resize_finish(application)
+        application.root.after_cancel.assert_called_once_with("old-finish")
+        application.root.after.assert_called_once_with(gui.RESIZE_SETTLE_MS, application._finish_resize)
+
+    def test_unchanged_layout_does_not_repaint(self):
+        application = mock.Mock(s=1, _layout_size=(2, 1880, 932))
+        application.viewport.canvas.winfo_width.return_value = 1920
+        gui.App._resize_layout(application)
+        application.hero.resize.assert_not_called()
+        application.root.after.assert_not_called()
+
+    def test_high_quality_composition_runs_in_worker_with_captured_width(self):
+        application = mock.Mock(_track_key="track", _track_color=(100, 150, 200), _cover=None)
+        application.hero.W = 1880
+        gui.App._finish_resize(application)
+        application.hero.compose.assert_not_called()
+        self.assertIsNone(application._layout_finish_job)
+        application.hero.W = 1000
+        application._background.call_args.args[0]()
+        application.hero.compose.assert_called_once_with((100, 150, 200), None, width=1880)
+        application.events.put.assert_called_once_with(("hero", ("track", (100, 150, 200), None, application.hero.compose.return_value)))
+
+    def test_maximized_window_keeps_foreground_polling_rate(self):
+        application = mock.Mock(_ticks=0)
+        application.events = queue.Queue()
+        application.root.state.return_value = "zoomed"
+        gui.App._drain_events(application)
+        application.root.after.assert_called_once_with(gui.TICK_MS, application._drain_events)
+
+    def test_left_anchored_content_does_not_jump_to_center_before_expanding(self):
+        frame = mock.Mock(center_content=False, _window=1)
+        frame.content.winfo_reqwidth.return_value = 744
+        frame.content.winfo_reqheight.return_value = 600
+        frame.canvas.winfo_width.return_value = 1920
+        frame.canvas.winfo_height.return_value = 1080
+        widgets.ScrollableFrame._sync_content(frame)
+        frame.canvas.coords.assert_called_once_with(1, 0, 0)
+
+    def test_cover_download_finishing_at_old_width_is_rerendered(self):
+        application = mock.Mock(_track_key="track", _track_color=(1, 2, 3), _cover=None)
+        application.hero.W, application.hero.H = 1880, 132
+        cover = Image.new("RGB", (100, 100))
+        gui.App._handle(application, "hero", ("track", (1, 2, 3), cover, Image.new("RGBA", (704, 132))))
+        self.assertIs(application._cover, cover)
+        application._schedule_resize_finish.assert_called_once()
+        application.hero.show.assert_not_called()
+
+    def test_placeholder_render_cannot_discard_newly_downloaded_cover(self):
+        cover = Image.new("RGB", (100, 100))
+        application = mock.Mock(_track_key="track", _track_color=(1, 2, 3), _cover=cover)
+        application.hero.W, application.hero.H = 1880, 132
+        gui.App._handle(application, "hero", ("track", (1, 2, 3), None, Image.new("RGBA", (1880, 132))))
+        self.assertIs(application._cover, cover)
+        application._schedule_resize_finish.assert_called_once()
+        application.hero.show.assert_not_called()
+
+
 class ResizingWidgetTests(unittest.TestCase):
+    def test_banner_preview_preserves_cover_and_right_corners(self):
+        source = Image.new("RGBA", (704, 132), "blue")
+        source.paste("red", (0, 0, 136, 132))
+        source.paste("green", (686, 0, 704, 132))
+        for width in (344, 1880, 3800):
+            resized = widgets.resize_banner(source, width, 136, 18)
+            self.assertEqual(resized.size, (width, 132))
+            self.assertEqual(resized.crop((0, 0, 136, 132)).tobytes(), source.crop((0, 0, 136, 132)).tobytes())
+            self.assertEqual(resized.crop((width - 18, 0, width, 132)).tobytes(), source.crop((686, 0, 704, 132)).tobytes())
+
+    def test_resize_previews_original_artwork_without_composition_or_lock(self):
+        source = Image.new("RGBA", (704, 132), "blue")
+        hero = mock.Mock(W=704, s=1, text_x=136, _text=("Track", "Artist", "Device"), _resize_source=source)
+        hero._render_lock = mock.MagicMock()
+        widgets.Hero.resize(hero, 1880)
+        hero.compose.assert_not_called()
+        hero._render_lock.__enter__.assert_not_called()
+        self.assertIs(hero._resize_source, source)
+        self.assertEqual(hero._crossfade.call_args.args[0].size, (1880, 132))
+
+    def test_rounded_panels_reuse_only_small_corner_artwork(self):
+        widgets._panel_corners.cache_clear()
+        first = widgets.rounded_panel(344, 252, 12, widgets.CARD)
+        second = widgets.rounded_panel(1892, 252, 12, widgets.CARD)
+        self.assertEqual(widgets._panel_corners.cache_info().misses, 1)
+        self.assertEqual(first.getpixel((0, 0))[3], 0)
+        self.assertEqual(second.getpixel((1000, 100))[3], 255)
+
+    def test_slider_endpoints_keep_knob_and_track_colors(self):
+        for width in (344, 1892):
+            for value in (0, 100):
+                slider = SimpleNamespace(w=width, h=22, s=1, knob_r=8.5, lo=0, hi=100,
+                                         var=mock.Mock(), accent=widgets.DEFAULT_ACCENT,
+                                         _img_id=1, itemconfig=mock.Mock())
+                slider.var.get.return_value = value
+                with mock.patch.object(widgets.ImageTk, "PhotoImage", side_effect=lambda image: image):
+                    widgets.Slider.draw(slider)
+                knob_x = 10 if value == 0 else width - 10
+                self.assertEqual(slider._photo.getpixel((knob_x, 11)), (255, 255, 255, 255))
+                track = slider._photo.getpixel((width // 2, 11))[:3]
+                expected = tuple(map(int, widgets.to_rgb(widgets.CONTROL_HI))) if value == 0 else widgets.DEFAULT_ACCENT
+                self.assertEqual(track, expected)
+
     def test_stale_hero_render_is_ignored_after_resize(self):
         hero = mock.Mock(W=1120, H=132)
         widgets.Hero.show(hero, mock.Mock(size=(704, 132)))
