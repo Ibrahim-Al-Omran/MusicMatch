@@ -20,7 +20,16 @@ The Mac download is Developer ID signed and notarized by Apple. Windows is unsig
 
 These download links automatically serve the newest successful main build. Both apps must finish building, including Mac notarization, before a new release replaces the previous downloads.
 
-**Windows first launch:** the unsigned build can show **Windows protected your PC** / **unrecognized app**. If you downloaded it from this repository's release and trust it, choose **More info → Run anyway**. This is a SmartScreen reputation warning, not by itself a malware detection. Keep SmartScreen and antivirus enabled; Windows signing is not included in these builds.
+### Windows SmartScreen warning
+
+The Windows download is free and currently **unsigned**; no paid Windows code-signing service is used. On first launch, Windows may show **Windows protected your PC** / **unrecognized app**.
+
+If you downloaded the ZIP from this repository's GitHub Release and trust it:
+
+1. Click **More info** in the warning.
+2. Click **Run anyway** to launch MusicMatch.
+
+This is a SmartScreen reputation warning, not by itself a malware detection. Keep SmartScreen and antivirus enabled. These steps allow that download on your computer; they do not approve the app for everyone, and future downloads may show the warning again.
 
 ## Setup
 
