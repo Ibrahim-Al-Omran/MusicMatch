@@ -1,3 +1,4 @@
+import queue
 import unittest
 from types import SimpleNamespace
 from unittest import mock
@@ -163,12 +164,89 @@ class DiscoveryGuidanceTests(unittest.TestCase):
         self.assertIn("Local Network", message)
         self.assertIn("LAN Control", message)
         self.assertIn("guest Wi-Fi", message)
+        self.assertIn("Private networks", message)
 
     def test_long_status_is_not_truncated(self):
         application = mock.Mock()
         message = "Network troubleshooting. " * 20
         gui.App._set_status(application, message)
         application.status.config.assert_called_once_with(text=message)
+
+
+class BackgroundPollingTests(unittest.TestCase):
+    def test_setup_state_does_not_crash_ui_polling(self):
+        application = mock.Mock(_bg_running=True, _state_seen=None)
+        state = {"status": "setup", "message": "No lights configured"}
+        with mock.patch.object(gui.svc, "background_state", return_value=state):
+            gui.App._poll_background(application)
+        self.assertEqual(application._state_seen, ("setup", None, (), "No lights configured"))
+        application._set_status.assert_called_once_with("No lights configured")
+        application.hero.set_content.assert_called_once_with("Almost there", "No lights configured", "", None, None)
+
+    def test_setup_message_changes_are_reflected(self):
+        application = mock.Mock(_bg_running=True, _state_seen=("setup", None, (), "Old message"))
+        with mock.patch.object(gui.svc, "background_state", return_value={"status": "setup", "message": "Connect Spotify"}):
+            gui.App._poll_background(application)
+        application.hero.set_content.assert_called_once_with("Almost there", "Connect Spotify", "", None, None)
+
+    def test_event_loop_keeps_polling_after_setup_and_handles_scan_results(self):
+        application = mock.Mock(_bg_running=True, _state_seen=None, _ticks=0)
+        application.events = queue.Queue()
+        application._handle.side_effect = lambda kind, data: gui.App._handle(application, kind, data)
+        application.root.state.return_value = "normal"
+        application._poll_background_if_changed.side_effect = lambda: gui.App._poll_background(application)
+        state = {"status": "setup", "message": "No lights configured"}
+        with mock.patch.object(gui.svc, "background_state", return_value=state):
+            gui.App._drain_events(application)
+            application.events.put(("lights", ([{"type": "wiz", "host": "192.168.1.20"}], [])))
+            gui.App._drain_events(application)
+        self.assertEqual(application.root.after.call_count, 2)
+        self.assertEqual(application._handle.call_args.args[0], "lights")
+        application._lights_found.assert_called_once_with([{"type": "wiz", "host": "192.168.1.20"}], [])
+
+
+class ResponsiveLayoutTests(unittest.TestCase):
+    def test_wide_screen_uses_capped_expanded_dashboard(self):
+        self.assertEqual(gui.dashboard_layout(1920, 1), (2, 1120, 552))
+
+    def test_medium_window_has_two_equal_columns(self):
+        self.assertEqual(gui.dashboard_layout(900, 1), (2, 860, 422))
+
+    def test_small_window_reflows_to_single_column(self):
+        self.assertEqual(gui.dashboard_layout(600, 1), (1, 560, 560))
+
+    def test_very_narrow_window_preserves_control_minimum(self):
+        self.assertEqual(gui.dashboard_layout(320, 1), (1, 344, 344))
+
+    def test_breakpoint_scales_with_display_density(self):
+        self.assertEqual(gui.dashboard_layout(1000, 1.25), (2, 950, 465))
+        self.assertEqual(gui.dashboard_layout(800, 1.25), (1, 750, 750))
+
+
+class ResizingWidgetTests(unittest.TestCase):
+    def test_stale_hero_render_is_ignored_after_resize(self):
+        hero = mock.Mock(W=1120, H=132)
+        widgets.Hero.show(hero, mock.Mock(size=(704, 132)))
+        hero._crossfade.assert_not_called()
+
+    def test_matching_hero_render_is_shown(self):
+        hero = mock.Mock(W=1120, H=132)
+        artwork = mock.Mock(size=(1120, 132))
+        widgets.Hero.show(hero, artwork)
+        hero._crossfade.assert_called_once_with(artwork)
+
+    def test_card_resize_preserves_right_alignment_and_stretches_slider(self):
+        card = mock.Mock(w=344)
+        card.find_all.return_value = [1, 2, 3]
+        card.type.side_effect = lambda item: {1: "text", 2: "window", 3: "image"}[item]
+        card.itemcget.side_effect = lambda item, option: {(1, "anchor"): "e", (2, "anchor"): "w", (2, "window"): ".slider"}[(item, option)]
+        slider = mock.Mock(spec=widgets.Slider, w=148)
+        card.nametowidget.return_value = slider
+        widgets.Card._resize(card, SimpleNamespace(width=552))
+        card.move.assert_called_once_with(1, 208, 0)
+        slider.configure.assert_called_once_with(width=356)
+        slider.draw.assert_called_once()
+        card._paint.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -41,6 +41,7 @@ TICK_MS = 150  # how quickly the window reflects a song change (the lights don't
 HIDDEN_TICK_MS = 1000
 LIVENESS_CHECK_S = 3
 CARD_W = 344
+MAX_CONTENT_W = 1120
 GAP = 16
 GUI_LOCK_PATH = DATA_DIR / ".musicmatch_gui.lock"
 SHOW_PATH = DATA_DIR / ".musicmatch_show"
@@ -54,6 +55,14 @@ def _fmt_seconds(sec: int) -> str:
 
 def _blank_placeholder(value: str) -> str:
     return "" if value.startswith("PASTE_") else value
+
+
+def dashboard_layout(viewport_width: int, scale: float) -> tuple[int, int, int]:
+    available = max(round(CARD_W * scale), viewport_width - round(40 * scale))
+    columns = 2 if available >= round((CARD_W * 2 + GAP) * scale) else 1
+    width = min(available, round(MAX_CONTENT_W * scale))
+    card_width = (width - round(GAP * scale) * (columns - 1)) // columns
+    return columns, width, card_width
 
 
 class QueueLogHandler(logging.Handler):
@@ -73,6 +82,8 @@ class App:
         self._save_job: str | None = None
         self._loading = False
         self._connecting_spotify = False
+        self._layout_job = None
+        self._layout_size = None
         self._config_mtime = self._read_mtime()
         self.accent = w.DEFAULT_ACCENT
         self._accented: list = []
@@ -140,7 +151,7 @@ class App:
             wraplength=max(1, event.width)))
         self.viewport = w.ScrollableFrame(self.root)
         self.viewport.pack(fill="both", expand=True)
-        main = tk.Frame(self.viewport.content, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
+        main = self.main = tk.Frame(self.viewport.content, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
         main.pack()
 
         # Header: wordmark + sync switch
@@ -151,7 +162,7 @@ class App:
         self.header = header
         self.sync_var = tk.BooleanVar(value=self.cfg.sync_enabled)
         self.sync_toggle = self._accent(w.Toggle(header, s, self.sync_var, command=self._sync_toggled, bg=w.BG))
-        header.create_window(round(full_w * s), round(18 * s), window=self.sync_toggle, anchor="e")
+        self._sync_window = header.create_window(round(full_w * s), round(18 * s), window=self.sync_toggle, anchor="e")
         self.sync_lbl = header.create_text(round((full_w - 50) * s), round(18 * s), anchor="e",
                                            font=f["body"], fill=w.TEXT_2, text="Off")
         self._draw_brand_mark()
@@ -159,9 +170,9 @@ class App:
         self.hero = w.Hero(main, s, full_w * s, f)
         self.hero.grid(row=1, column=0, columnspan=2, pady=(round(6 * s), round(GAP * s)))
 
-        left = tk.Frame(main, bg=w.BG)
+        left = self.left_column = tk.Frame(main, bg=w.BG)
         left.grid(row=2, column=0, sticky="n", padx=(0, round(GAP * s)))
-        right = tk.Frame(main, bg=w.BG)
+        right = self.right_column = tk.Frame(main, bg=w.BG)
         right.grid(row=2, column=1, sticky="n")
 
         # Light
@@ -188,12 +199,12 @@ class App:
         y = card.row("Turn lights on with music", f["body"])
         card.put(self._accent(w.Toggle(card, s, self.auto_on, command=self._changed)), (CARD_W - 12) * s, y)
         card.finish()
-        card.pack()
+        card.pack(fill="x")
 
         # Every light found on the network, each with its own switch
         self._section(left, "YOUR LIGHTS")
         self.lights_holder = tk.Frame(left, bg=w.BG)
-        self.lights_holder.pack()
+        self.lights_holder.pack(fill="x")
         self._light_widgets: list = []
         self._scanning = False
         self._build_lights_card()
@@ -214,7 +225,7 @@ class App:
         self.idle_well = w.ColorWell(card, s, self.cfg.idle_color, lambda: self._pick_color("idle_color"))
         card.put(self.idle_well, (CARD_W - 12) * s, y)
         card.finish()
-        card.pack()
+        card.pack(fill="x")
 
         # Setup
         self._section(right, "SETUP")
@@ -241,7 +252,7 @@ class App:
         if not autostart.supported():
             login_toggle.unbind("<Button-1>")
         card.finish()
-        card.pack()
+        card.pack(fill="x")
 
         self.keys_card = self._build_keys_card(right)
         if not (self.cfg.spotify_client_id and not self.cfg.spotify_client_id.startswith("PASTE_")):
@@ -250,6 +261,35 @@ class App:
         self.status = tk.Label(main, text="", font=f["small"], fg=w.TEXT_3, bg=w.BG,
                                anchor="w", justify="left", wraplength=round(full_w * s))
         self.status.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(round(14 * s), 0))
+        self.viewport.canvas.bind("<Configure>", self._queue_layout, add="+")
+
+    def _queue_layout(self, _event=None) -> None:
+        if self._layout_job is not None:
+            self.root.after_cancel(self._layout_job)
+        self._layout_job = self.root.after(80, self._resize_layout)
+
+    def _resize_layout(self) -> None:
+        self._layout_job = None
+        layout = dashboard_layout(self.viewport.canvas.winfo_width(), self.s)
+        if layout == self._layout_size:
+            return
+        self._layout_size = layout
+        columns, width, card_width = layout
+        gap = round(GAP * self.s)
+        self.main.columnconfigure(0, weight=1, minsize=card_width + (gap if columns == 2 else 0))
+        self.main.columnconfigure(1, weight=1 if columns == 2 else 0,
+                                  minsize=card_width if columns == 2 else 0)
+        self.left_column.grid_configure(row=2, column=0, sticky="new",
+                                        padx=(0, gap if columns == 2 else 0))
+        self.right_column.grid_configure(row=2 if columns == 2 else 3,
+                                         column=1 if columns == 2 else 0, sticky="new")
+        self.status.grid_configure(row=4 if columns == 1 else 3)
+        self.status.configure(wraplength=width)
+        self.header.configure(width=width)
+        self.header.coords(self._sync_window, width, round(18 * self.s))
+        self.header.coords(self.sync_lbl, width - round(50 * self.s), round(18 * self.s))
+        self.hero.resize(width, self._track_color if self._track_key else None,
+                         self._cover if self._track_key else None)
 
     def _build_keys_card(self, parent) -> tk.Frame:
         s, f = self.s, self.fonts
@@ -283,7 +323,7 @@ class App:
         card.put(self._accent(w.PillButton(card, s, "Connect", f["small"], self._connect_spotify,
                                            primary=True)), (CARD_W - 10) * s, y)
         card.finish()
-        card.pack(pady=(round(10 * s), 0))
+        card.pack(fill="x", pady=(round(10 * s), 0))
         return holder
 
     def _build_lights_card(self) -> None:
@@ -316,7 +356,7 @@ class App:
         self._light_widgets.append(find)
         card.put(find, (CARD_W - 10) * s, y)
         card.finish()
-        card.pack()
+        card.pack(fill="x")
 
     def _light_toggled(self, index: int, on: bool) -> None:
         lights = [devices.normalize(e) for e in self.cfg.lights]
@@ -377,9 +417,9 @@ class App:
                            w.TEXT_2 if running else w.TEXT_3)
             self.bg_btn.set_text("Stop" if running else "Start")
         status = state.get("status") if state else "stopped"
+        message = state.get("message") if state else None
         seen = (status, state.get("item_id"), tuple(state.get("color") or ()),
                 message if status == "setup" else None) if state else ("stopped",)
-        message = state.get("message") if state else None
         if message and message != getattr(self, "_last_message", None):
             self._last_message = message
             self._set_status(message)
@@ -573,7 +613,7 @@ class App:
         if self.keys_card.winfo_ismapped():
             self.keys_card.pack_forget()
         else:
-            self.keys_card.pack()
+            self.keys_card.pack(fill="x")
 
     def _discover(self) -> None:
         if self._scanning:
@@ -603,7 +643,8 @@ class App:
             self._set_status(f"Found {len(found)} light(s)" + (f", {new} new." if new else "."))
         else:
             self._set_status("No lights found. Use the same home network (not guest Wi-Fi), and try "
-                             "disconnecting the VPN or allowing LAN access. On Mac, enable MusicMatch "
+                             "disconnecting the VPN or allowing LAN access. On Windows, allow MusicMatch "
+                             "through the firewall on Private networks. On Mac, enable MusicMatch "
                              "in System Settings > Privacy & Security > Local Network. Govee and "
                              "Yeelight also need LAN Control switched on in their apps.")
 

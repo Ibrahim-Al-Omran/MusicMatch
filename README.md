@@ -20,6 +20,8 @@ The Mac download is Developer ID signed and notarized by Apple. Windows is unsig
 
 These download links automatically serve the newest successful main build. Both apps must finish building, including Mac notarization, before a new release replaces the previous downloads.
 
+**Windows first launch:** the unsigned build can show **Windows protected your PC** / **unrecognized app**. If you downloaded it from this repository's release and trust it, choose **More info → Run anyway**. This is a SmartScreen reputation warning, not by itself a malware detection. Keep SmartScreen and antivirus enabled; Windows signing is not included in these builds.
+
 ## Setup
 
 The computer running MusicMatch just needs to be on the **same Wi-Fi as your lights**.
@@ -28,7 +30,7 @@ The computer running MusicMatch just needs to be on the **same Wi-Fi as your lig
 2. **Spotify** — **Keys → Create an app on Spotify** (the account needs Premium). Set the Redirect URI MusicMatch shows (`http://127.0.0.1:8888/callback`), tick **Web API**, paste the Client ID and secret, **Connect**. Add other household accounts under User Management (max 5).
 3. **Play** something on Spotify. Lights follow within about a second.
 
-The window is resizable on Mac and Windows. In a smaller window, use the scrollbars or mouse wheel / trackpad to reach all controls; Shift-scroll moves horizontally.
+The window is resizable on Mac and Windows. The dashboard expands into wider panels on large screens and stacks into one column in smaller windows. Use the scrollbars or mouse wheel / trackpad to reach all controls; Shift-scroll moves horizontally in very narrow windows.
 
 **Connect opens your default browser on purpose:** sign in to Spotify and click **Agree**. Leave MusicMatch running; the browser will show a return-to-MusicMatch message and the app will say **Connected as ...**. You can then close the tab. If Spotify shows a redirect-URI error, register exactly the URI shown in MusicMatch in your Spotify app's settings (use 127.0.0.1, not localhost). Login waits up to three minutes; if it expires, click **Connect** again. If the callback port is already in use, quit any other copy of MusicMatch before retrying.
 
@@ -39,6 +41,7 @@ Every push to main builds both apps in GitHub Actions, including signing and not
 ### Lights not found?
 
 - Keep the computer and lights on the same home network, not an isolated guest network.
+- On Windows, allow MusicMatch through Windows Firewall on **Private** networks when prompted. Do not disable the firewall. Automatic discovery only supports the Wi-Fi/LAN-capable models of the brands listed above; Bluetooth-only bulbs cannot be discovered this way.
 - A VPN can block local discovery. Try disconnecting it and clicking **Find** again, or enable its **Allow LAN / local network** option if available. MusicMatch does not change your VPN settings.
 - On Mac, discovery also sends on active IPv4 LAN interfaces rather than relying only on the default route. This is VPN-provider-neutral, but cannot override a VPN or firewall that blocks LAN traffic. Actual discovery socket errors now appear in the app instead of being silently treated as no lights found.
 - On Mac, enable **MusicMatch** in **System Settings > Privacy & Security > Local Network**, then quit and reopen MusicMatch if needed.

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import functools
 import sys
+import threading
 import tkinter as tk
 import tkinter.font as tkfont
 from collections.abc import Callable
@@ -527,6 +528,29 @@ class Card(tk.Canvas):
         self.create_window(x, y, window=widget, anchor=anchor)
 
     def finish(self) -> None:
+        self._background_id = self.create_image(0, 0, anchor="nw")
+        self.bind("<Configure>", self._resize)
+        self._paint()
+
+    def _resize(self, event) -> None:
+        delta = event.width - self.w
+        if not delta:
+            return
+        self.w = event.width
+        for item in self.find_all():
+            if self.type(item) not in ("text", "window"):
+                continue
+            if self.itemcget(item, "anchor") in ("e", "ne", "se"):
+                self.move(item, delta, 0)
+            elif self.type(item) == "window":
+                widget = self.nametowidget(self.itemcget(item, "window"))
+                if isinstance(widget, Slider):
+                    widget.w += delta
+                    widget.configure(width=widget.w)
+                    widget.draw()
+        self._paint()
+
+    def _paint(self) -> None:
         s, h = self.s, round(self.y)
         self.config(height=h)
         p = Painter(self.w, h)
@@ -534,7 +558,8 @@ class Card(tk.Canvas):
         for y in self._lines:
             p.line(14 * s, y, self.w, y, fill=HAIRLINE, width=0.8 * s)
         self._photo = p.photo()
-        self.tag_lower(self.create_image(0, 0, image=self._photo, anchor="nw"))
+        self.itemconfigure(self._background_id, image=self._photo)
+        self.tag_lower(self._background_id)
 
 
 def _soft_blur(img: Image.Image, radius: float) -> Image.Image:
@@ -578,6 +603,7 @@ class Hero(tk.Canvas):
         self._photo: ImageTk.PhotoImage | None = None
         self._fade_token = 0
         self._layers: tuple[Image.Image, Image.Image, Image.Image] | None = None
+        self._render_lock = threading.Lock()
         self.set_content("", "", "", None, None)
 
     def set_content(self, title: str, subtitle: str, device: str, color, cover: Image.Image | None) -> None:
@@ -585,6 +611,7 @@ class Hero(tk.Canvas):
         self.show(self.compose(color, cover))
 
     def set_text(self, title: str, subtitle: str, device: str) -> None:
+        self._text = (title, subtitle, device)
         max_w = self.W - self.text_x - self.pad
         self.itemconfig(self.title_id, text=self._fit(title, self.fonts["title"], max_w))
         self.itemconfig(self.artist_id, text=self._fit(subtitle, self.fonts["body"], max_w))
@@ -592,7 +619,19 @@ class Hero(tk.Canvas):
 
     def show(self, artwork: Image.Image) -> None:
         """Crossfade to artwork made by compose() (which is safe to call off the Tk thread)."""
+        if artwork.size != (self.W, self.H):
+            return
         self._crossfade(artwork)
+
+    def resize(self, width: int, color, cover: Image.Image | None) -> None:
+        if width == self.W:
+            return
+        with self._render_lock:
+            self.W = width
+            self._layers = None
+        self.configure(width=width)
+        self.set_text(*self._text)
+        self.show(self.compose(color, cover))
 
     def _fit(self, text: str, font, max_w: float) -> str:
         f = tkfont.Font(font=font)
@@ -605,7 +644,7 @@ class Hero(tk.Canvas):
     def _static_layers(self) -> tuple[Image.Image, Image.Image, Image.Image]:
         """Card background, its shape mask and the cover shadow: identical for every
         song, so they're drawn once."""
-        if self._layers is None:
+        if self._layers is None or self._layers[0].size != (self.W, self.H):
             s, W, H = self.s, self.W, self.H
             base = Image.new("RGBA", (W, H), to_hex(to_rgb(BG)))
             card = Painter(W, H)
@@ -620,6 +659,10 @@ class Hero(tk.Canvas):
         return self._layers
 
     def compose(self, color, cover: Image.Image | None) -> Image.Image:
+        with self._render_lock:
+            return self._compose(color, cover)
+
+    def _compose(self, color, cover: Image.Image | None) -> Image.Image:
         s, W, H = self.s, self.W, self.H
         card, card_mask, shadow = self._static_layers()
         base = card.copy()
@@ -653,7 +696,7 @@ class Hero(tk.Canvas):
         self._fade_token += 1
         token, old = self._fade_token, self._current
         self._current = new
-        if old is None:
+        if old is None or old.size != new.size:
             self._photo = ImageTk.PhotoImage(new)
             self.itemconfig(self._img_id, image=self._photo)
             return
