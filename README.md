@@ -28,6 +28,10 @@ The computer running MusicMatch just needs to be on the **same Wi-Fi as your lig
 
 The window is resizable on Mac and Windows. In a smaller window, use the scrollbars or mouse wheel / trackpad to reach all controls; Shift-scroll moves horizontally.
 
+MusicMatch checks for updates in the background when opened and daily while the window stays running, with network checks limited to once every 24 hours. When a newer release has a ZIP ready for your platform, a banner offers **Download**. This opens the ZIP in your browser; it does not install or replace the app automatically. Offline or failed checks are silent.
+
+Every push to main builds both apps in GitHub Actions, including signing and notarizing the Mac app. Download these builds from the run's **Artifacts** section. Version tags publish the ZIPs to GitHub Releases and make them available to the in-app update check.
+
 ### Lights not found?
 
 - Keep the computer and lights on the same home network, not an isolated guest network.

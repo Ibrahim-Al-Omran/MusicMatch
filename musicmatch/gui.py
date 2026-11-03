@@ -16,7 +16,7 @@ from tkinter import colorchooser, messagebox
 
 from PIL import Image, ImageTk
 
-from . import autostart, logo
+from . import autostart, logo, updates
 from . import service as svc
 from . import widgets as w
 from . import devices
@@ -83,6 +83,7 @@ class App:
         self._state_checked = 0.0
         self._ticks = 0
         self._bg_running: bool | None = None
+        self._update: updates.Update | None = None
 
         self.s = w.scale_factor(root)
         family = w.font_family(root)
@@ -120,12 +121,22 @@ class App:
         self._poll_background()
         if not self.cfg.lights:  # first run: go look for lights straight away
             root.after(400, self._discover)
+        root.after(1000, self._check_updates)
 
     # ---------- layout ----------
 
     def _build(self) -> None:
         s, f = self.s, self.fonts
         full_w = CARD_W * 2 + GAP
+        self.update_banner = tk.Frame(self.root, bg=w.CARD, padx=round(12 * s), pady=round(8 * s))
+        self.update_label = tk.Label(self.update_banner, text="", font=f["small"],
+                                     bg=w.CARD, fg=w.TEXT, anchor="w", justify="left")
+        download = w.PillButton(self.update_banner, s, "Download", f["small"],
+                                self._download_update, bg=w.CARD)
+        download.pack(side="right", padx=(round(10 * s), 0))
+        self.update_label.pack(side="left", fill="x", expand=True)
+        self.update_label.bind("<Configure>", lambda event: self.update_label.configure(
+            wraplength=max(1, event.width)))
         self.viewport = w.ScrollableFrame(self.root)
         self.viewport.pack(fill="both", expand=True)
         main = tk.Frame(self.viewport.content, bg=w.BG, padx=round(20 * s), pady=round(16 * s))
@@ -685,6 +696,22 @@ class App:
 
     # ---------- events from worker threads ----------
 
+    def _check_updates(self) -> None:
+        self.root.after(updates.CHECK_INTERVAL_SECONDS * 1000, self._check_updates)
+        self._background(lambda: self.events.put(("update", updates.check_for_update())))
+
+    def _show_update(self, update: updates.Update | None) -> None:
+        self._update = update
+        if update is None:
+            self.update_banner.pack_forget()
+            return
+        self.update_label.configure(text=f"MusicMatch {update.version} is available.")
+        self.update_banner.pack(side="top", fill="x", before=self.viewport)
+
+    def _download_update(self) -> None:
+        if self._update is not None:
+            webbrowser.open(self._update.download_url)
+
     def _drain_events(self) -> None:
         try:
             while True:
@@ -749,6 +776,8 @@ class App:
             self._set_status(f"Couldn't search for lights: {data}")
         elif kind == "hue_paired":
             self._hue_paired(*data)
+        elif kind == "update":
+            self._show_update(data)
 
     def card_text(self, item, text: str, color: str) -> None:
         self._setup_card.itemconfig(item, text=text, fill=color)

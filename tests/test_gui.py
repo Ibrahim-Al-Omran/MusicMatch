@@ -2,7 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest import mock
 
-from musicmatch import gui, widgets
+from musicmatch import gui, updates, widgets
 from musicmatch.config import Config
 
 
@@ -107,6 +107,51 @@ class ScrollingTests(unittest.TestCase):
         event = SimpleNamespace(widget=SimpleNamespace(master=None))
         widgets.ScrollableFrame._content_changed(self.frame, event)
         self.frame.after_idle.assert_not_called()
+
+
+class UpdateBannerTests(unittest.TestCase):
+    def test_update_check_uses_worker_and_schedules_daily_check(self):
+        application = mock.Mock()
+        gui.App._check_updates(application)
+        application.root.after.assert_called_once_with(
+            updates.CHECK_INTERVAL_SECONDS * 1000, application._check_updates)
+        work = application._background.call_args.args[0]
+        update = updates.Update("1.0.4", "https://github.com/example")
+        with mock.patch.object(updates, "check_for_update", return_value=update):
+            work()
+        application.events.put.assert_called_once_with(("update", update))
+
+    def test_banner_is_above_scrollable_controls(self):
+        application = mock.Mock()
+        update = updates.Update("1.0.4", "https://github.com/example")
+        gui.App._show_update(application, update)
+        self.assertEqual(application._update, update)
+        application.update_label.configure.assert_called_once_with(text="MusicMatch 1.0.4 is available.")
+        application.update_banner.pack.assert_called_once_with(side="top", fill="x", before=application.viewport)
+
+    def test_no_update_hides_banner(self):
+        application = mock.Mock()
+        gui.App._show_update(application, None)
+        self.assertIsNone(application._update)
+        application.update_banner.pack_forget.assert_called_once()
+
+    def test_download_opens_browser_without_installing(self):
+        update = updates.Update("1.0.4", "https://github.com/example")
+        application = mock.Mock(_update=update)
+        with mock.patch.object(gui.webbrowser, "open") as browser:
+            gui.App._download_update(application)
+        browser.assert_called_once_with(update.download_url)
+
+    def test_download_does_nothing_without_an_update(self):
+        with mock.patch.object(gui.webbrowser, "open") as browser:
+            gui.App._download_update(mock.Mock(_update=None))
+        browser.assert_not_called()
+
+    def test_worker_event_updates_ui_on_main_thread(self):
+        application = mock.Mock()
+        update = updates.Update("1.0.4", "https://github.com/example")
+        gui.App._handle(application, "update", update)
+        application._show_update.assert_called_once_with(update)
 
 
 class DiscoveryGuidanceTests(unittest.TestCase):

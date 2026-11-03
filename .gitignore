@@ -15,6 +15,7 @@ config.json
 .musicmatch_show
 .musicmatch_colors.json
 .musicmatch_colors.json.tmp
+.musicmatch_updates.json*
 
 # Local shortcuts and build output
 MusicMatch.lnk
