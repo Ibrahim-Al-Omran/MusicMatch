@@ -1,4 +1,10 @@
-"""Start at login, and on Windows register MusicMatch as a real Start-menu app."""
+"""Start at login, and on Windows optionally add a Start-menu shortcut.
+
+The downloadable Windows build is a portable ZIP. It must not look like a stealth
+installer: no HKCU Run-key writes, no Apps & Features uninstall registration, and
+no PowerShell ExecutionPolicy Bypass. Start-at-login uses a Startup-folder
+shortcut the user can see and remove.
+"""
 
 from __future__ import annotations
 
@@ -13,8 +19,9 @@ from .service import command, python_for_background
 
 APP_NAME = "MusicMatch"
 LAUNCHER = ROOT / "background.pyw"
-RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\MusicMatch"
+# Legacy Run-key path from older builds; cleared on disable/uninstall, never written.
+_LEGACY_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_LEGACY_UNINSTALL_KEY = r"Software\Microsoft\Windows\CurrentVersion\Uninstall\MusicMatch"
 PLIST_PATH = Path.home() / "Library" / "LaunchAgents" / "com.musicmatch.background.plist"
 
 
@@ -22,9 +29,16 @@ def icon_file() -> Path:
     return RESOURCES / "assets" / "MusicMatch.ico"
 
 
+def _appdata() -> Path:
+    return Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
+
+
 def start_menu_shortcut() -> Path:
-    base = Path(os.environ.get("APPDATA") or Path.home() / "AppData" / "Roaming")
-    return base / "Microsoft" / "Windows" / "Start Menu" / "Programs" / f"{APP_NAME}.lnk"
+    return _appdata() / "Microsoft" / "Windows" / "Start Menu" / "Programs" / f"{APP_NAME}.lnk"
+
+
+def startup_shortcut() -> Path:
+    return _appdata() / "Microsoft" / "Windows" / "Start Menu" / "Programs" / "Startup" / f"{APP_NAME}.lnk"
 
 
 def supported() -> bool:
@@ -39,16 +53,16 @@ def _command() -> list[str]:
     return [python_for_background(), str(LAUNCHER)]
 
 
+def _windows_launch(role: str = "window") -> tuple[str, str, str, str]:
+    argv = command(role) if role == "window" else _command()
+    target, args = argv[0], subprocess.list2cmdline(argv[1:])
+    workdir = str(ROOT if not FROZEN else Path(sys.executable).parent)
+    return target, args, workdir, str(icon_file())
+
+
 def is_enabled() -> bool:
     if sys.platform == "win32":
-        import winreg
-
-        try:
-            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
-                winreg.QueryValueEx(key, APP_NAME)
-            return True
-        except OSError:
-            return False
+        return startup_shortcut().is_file() or _legacy_run_key_present()
     if sys.platform == "darwin":
         return PLIST_PATH.exists()
     return False
@@ -56,16 +70,15 @@ def is_enabled() -> bool:
 
 def set_enabled(enabled: bool) -> None:
     if sys.platform == "win32":
-        import winreg
-
-        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
-            if enabled:
-                winreg.SetValueEx(key, APP_NAME, 0, winreg.REG_SZ, subprocess.list2cmdline(_command()))
-            else:
-                try:
-                    winreg.DeleteValue(key, APP_NAME)
-                except FileNotFoundError:
-                    pass
+        if enabled:
+            target, args, workdir, icon = _windows_launch("background")
+            path = startup_shortcut()
+            if not path.is_file() or _shortcut_target(path) != (target, args):
+                _write_shortcut(path, target, args, workdir, icon)
+            _clear_legacy_run_key()
+        else:
+            startup_shortcut().unlink(missing_ok=True)
+            _clear_legacy_run_key()
     elif sys.platform == "darwin":
         if enabled:
             PLIST_PATH.parent.mkdir(parents=True, exist_ok=True)
@@ -85,33 +98,84 @@ def set_enabled(enabled: bool) -> None:
 
 
 def install_windows_app() -> None:
-    """Put MusicMatch in the Start menu and Settings → Apps, with the app icon."""
+    """Put MusicMatch in the Start menu with the app icon (portable; no Apps list entry)."""
     if sys.platform != "win32":
         return
-    window = command("window")
-    target, args = window[0], subprocess.list2cmdline(window[1:])
-    workdir = str(ROOT if not FROZEN else Path(sys.executable).parent)
-    icon = str(icon_file())
+    target, args, workdir, icon = _windows_launch("window")
     for path in (start_menu_shortcut(), ROOT / f"{APP_NAME}.lnk"):
+        if path.is_file() and _shortcut_target(path) == (target, args):
+            continue
         _write_shortcut(path, target, args, workdir, icon)
-    _register_uninstall(target, args, workdir, icon)
 
 
 def uninstall_windows_app() -> None:
     if sys.platform != "win32":
         return
     start_menu_shortcut().unlink(missing_ok=True)
+    startup_shortcut().unlink(missing_ok=True)
     (ROOT / f"{APP_NAME}.lnk").unlink(missing_ok=True)
+    _clear_legacy_run_key()
+    _clear_legacy_uninstall_key()
+
+
+def _legacy_run_key_present() -> bool:
     import winreg
 
     try:
-        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY)
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _LEGACY_RUN_KEY) as key:
+            winreg.QueryValueEx(key, APP_NAME)
+        return True
+    except OSError:
+        return False
+
+
+def _clear_legacy_run_key() -> None:
+    import winreg
+
+    try:
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _LEGACY_RUN_KEY, 0, winreg.KEY_SET_VALUE) as key:
+            winreg.DeleteValue(key, APP_NAME)
     except FileNotFoundError:
         pass
-    set_enabled(False)
+    except OSError:
+        pass
+
+
+def _clear_legacy_uninstall_key() -> None:
+    import winreg
+
+    try:
+        winreg.DeleteKey(winreg.HKEY_CURRENT_USER, _LEGACY_UNINSTALL_KEY)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        pass
+
+
+def _shortcut_target(path: Path) -> tuple[str, str] | None:
+    """Return (target, arguments) for an existing .lnk, or None if unreadable."""
+    q = str(path).replace("'", "''")
+    script = (
+        f"$s = (New-Object -ComObject WScript.Shell).CreateShortcut('{q}'); "
+        f"Write-Output $s.TargetPath; Write-Output $s.Arguments"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", script],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError):
+        return None
+    if result.returncode != 0:
+        return None
+    lines = [line.rstrip("\r") for line in result.stdout.splitlines()]
+    if not lines:
+        return None
+    return lines[0], (lines[1] if len(lines) > 1 else "")
 
 
 def _write_shortcut(path: Path, target: str, arguments: str, workdir: str, icon: str) -> None:
+    """Create a .lnk with WScript.Shell. Avoids ExecutionPolicy Bypass."""
     path.parent.mkdir(parents=True, exist_ok=True)
     q = lambda s: "'" + s.replace("'", "''") + "'"  # noqa: E731
     script = (
@@ -121,26 +185,6 @@ def _write_shortcut(path: Path, target: str, arguments: str, workdir: str, icon:
         f"$s.Description = '{APP_NAME}'; $s.Save()"
     )
     subprocess.run(
-        ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-        check=False, capture_output=True,
+        ["powershell", "-NoProfile", "-Command", script],
+        check=False, capture_output=True, timeout=15,
     )
-
-
-def _register_uninstall(target: str, arguments: str, workdir: str, icon: str) -> None:
-    import winreg
-
-    from musicmatch import __version__
-
-    uninstall = subprocess.list2cmdline(
-        [sys.executable.replace("pythonw.exe", "python.exe"), "-m", "musicmatch", "uninstall"]
-        if not FROZEN else [sys.executable, "uninstall"]
-    )
-    with winreg.CreateKey(winreg.HKEY_CURRENT_USER, UNINSTALL_KEY) as key:
-        winreg.SetValueEx(key, "DisplayName", 0, winreg.REG_SZ, APP_NAME)
-        winreg.SetValueEx(key, "DisplayIcon", 0, winreg.REG_SZ, icon)
-        winreg.SetValueEx(key, "Publisher", 0, winreg.REG_SZ, APP_NAME)
-        winreg.SetValueEx(key, "InstallLocation", 0, winreg.REG_SZ, workdir)
-        winreg.SetValueEx(key, "DisplayVersion", 0, winreg.REG_SZ, __version__)
-        winreg.SetValueEx(key, "UninstallString", 0, winreg.REG_SZ, uninstall)
-        winreg.SetValueEx(key, "NoModify", 0, winreg.REG_DWORD, 1)
-        winreg.SetValueEx(key, "NoRepair", 0, winreg.REG_DWORD, 1)

@@ -1,5 +1,7 @@
 import tempfile
+import threading
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest import mock
 
@@ -7,6 +9,51 @@ from musicmatch import app
 from musicmatch.app import AlreadyRunning, _acquire_instance_lock, read_color_cache, write_color_cache
 from musicmatch.config import Config
 from musicmatch.logo import menu_bar_icon
+from musicmatch.spotify_client import NowPlaying
+
+
+class SongBrightnessTests(unittest.TestCase):
+    def setUp(self):
+        self.engine = object.__new__(app.MusicMatch)
+        self.engine.cfg = Config(brightness=35)
+        self.engine.lights = mock.Mock()
+        self.engine._settings_lock = threading.Lock()
+        self.engine._current_key = None
+        self.engine._color_cache = {}
+        self.engine._cache_generation = 0
+        self.engine._save_color_cache = mock.Mock()
+        self.engine._remember = mock.Mock()
+        self.engine._prefetch_upcoming = mock.Mock()
+        self.engine.on_track = None
+        self.song = NowPlaying('track', 'first', 'Song', 'Artist', 'Album',
+                               'https://example/cover', 'Player', True, 10000)
+
+    def test_new_and_cached_songs_preserve_live_brightness(self):
+        color = (255, 90, 0)
+        with mock.patch.object(app, 'compute_color', return_value=(color, 'test')) as compute:
+            self.engine._on_playing(self.song)
+            self.engine._color_cache[app.cache_key(self.song)] = (color, 'cached')
+            self.engine._current_key = None
+            self.engine._on_playing(replace(self.song, item_id='second'))
+        compute.assert_called_once()
+        self.assertEqual(self.engine.lights.set_color.call_args_list, [
+            mock.call((89, 31, 0), preserve_brightness=True),
+            mock.call((89, 31, 0), preserve_brightness=True),
+        ])
+
+    def test_explicit_brightness_change_applies_without_recolouring(self):
+        self.engine._current_key = 'current'
+        self.engine.update_settings(replace(self.engine.cfg, brightness=100))
+        self.engine.lights.set_brightness.assert_called_once_with(100)
+        self.engine.lights.set_color.assert_not_called()
+        self.assertEqual(self.engine._current_key, 'current')
+        self.assertEqual(self.engine.cfg.brightness, 100)
+
+    def test_colour_boost_change_does_not_reset_brightness(self):
+        self.engine.update_settings(replace(self.engine.cfg, min_saturation=1.0))
+        self.engine.lights.set_brightness.assert_not_called()
+        self.assertEqual(self.engine.cfg.brightness, 35)
+        self.assertEqual(self.engine._cache_generation, 1)
 
 
 class InstanceLockTests(unittest.TestCase):

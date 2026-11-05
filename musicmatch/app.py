@@ -111,8 +111,7 @@ class MusicMatch:
                 lock.close()
 
     def update_settings(self, fresh: Config) -> None:
-        """Apply new settings to a running engine. Brightness changes don't re-send the
-        current color; callers re-dim the lights themselves (LightGroup.set_brightness)."""
+        """Apply settings live, changing brightness independently of the song colour."""
         with self._settings_lock:
             old = self.cfg
             self.cfg = replace(fresh)
@@ -121,6 +120,8 @@ class MusicMatch:
                 self._current_key = None
             self.lights.fade_seconds = fresh.fade_seconds
             self.lights.auto_turn_on = fresh.auto_turn_on
+            if fresh.brightness != old.brightness:
+                self.lights.set_brightness(fresh.brightness)
             if any(getattr(fresh, k) != getattr(old, k) for k in COLOR_SETTINGS):
                 self._cache_generation += 1
                 self._color_cache.clear()
@@ -225,9 +226,9 @@ class MusicMatch:
             self._remember(key, color, desc)
 
         sent = scale(color, self.cfg.brightness)
-        self.lights.set_color(sent)
+        self.lights.set_color(sent, preserve_brightness=True)
         log.info(
-            "%s - %s  [%s]  on %s  -> RGB%s (%s)",
+            "%s - %s  [%s]  on %s  -> RGB%s (%s; preserving live brightness)",
             np.artist, np.title, np.album, np.device, sent, desc,
         )
         if self.on_track:

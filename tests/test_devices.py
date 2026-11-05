@@ -57,6 +57,56 @@ class ConfigEntries(unittest.TestCase):
 
 
 class Colour(unittest.TestCase):
+    def test_song_colour_preserves_each_lights_live_brightness(self):
+        group = LightGroup([], 0, False)
+        self.addCleanup(group._pool.shutdown)
+        for current in ((255, 0, 0), (89, 44, 0), (0, 0, 128)):
+            with self.subTest(current=current):
+                session = mock.Mock(is_on=True, rgb=current)
+                light = mock.Mock()
+                light.device.native_transition = False
+                light.run.side_effect = lambda operation: operation(session)
+                group.lights = [light]
+                for target in ((0, 89, 0), (89, 31, 51), (31, 50, 89)):
+                    group.set_color(target, preserve_brightness=True)
+                    sent = session.set_rgb.call_args.args[0]
+                    self.assertEqual(max(sent), max(current))
+                    session.rgb = sent
+
+    def test_colour_without_preservation_uses_requested_brightness(self):
+        group = LightGroup([], 0, False)
+        self.addCleanup(group._pool.shutdown)
+        session = mock.Mock(is_on=True, rgb=(255, 0, 0))
+        light = mock.Mock()
+        light.device.native_transition = False
+        group._apply(light, session, (0, 89, 0))
+        session.set_rgb.assert_called_once_with((0, 89, 0), 0)
+
+    def test_song_colour_uses_configured_level_when_turning_on(self):
+        group = LightGroup([], 0, True)
+        self.addCleanup(group._pool.shutdown)
+        session = mock.Mock(is_on=False, rgb=(255, 0, 0))
+        group._apply(mock.Mock(), session, (0, 89, 0), preserve_brightness=True)
+        session.set_rgb.assert_called_once_with((0, 89, 0), 0)
+        session.turn_on.assert_called_once()
+
+    def test_song_colour_leaves_off_lights_alone(self):
+        group = LightGroup([], 0, False)
+        self.addCleanup(group._pool.shutdown)
+        session = mock.Mock(is_on=False)
+        group._apply(mock.Mock(), session, (0, 89, 0), preserve_brightness=True)
+        session.set_rgb.assert_not_called()
+        session.turn_on.assert_not_called()
+
+    def test_song_colour_with_black_state_uses_configured_level(self):
+        group = LightGroup([], 0, False)
+        self.addCleanup(group._pool.shutdown)
+        session = mock.Mock(is_on=True, rgb=(0, 0, 0))
+        light = mock.Mock()
+        light.device.native_transition = False
+        group._apply(light, session, (0, 89, 0), preserve_brightness=True)
+        session.set_rgb.assert_called_once_with((0, 89, 0), 0)
+
     def test_brightness_split_round_trips(self):
         color, level = split_brightness((89, 44, 0))
         self.assertEqual(max(color), 255)

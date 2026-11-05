@@ -61,6 +61,9 @@ jobs:
       - name: Build
         run: pyinstaller packaging/MusicMatch.spec --noconfirm
 
+      - name: Verify bundled brightness and settings
+        run: python packaging/verify_bundle.py
+
       - name: Sign, notarize, and zip (macOS)
         if: runner.os == 'macOS'
         shell: bash

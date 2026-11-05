@@ -45,8 +45,10 @@ class LightGroup:
         self.auto_turn_on = auto_turn_on
         self._pool = ThreadPoolExecutor(max_workers=max(1, min(16, len(self.lights))))
 
-    def set_color(self, rgb: RGB) -> None:
-        self._each(lambda light: light.run(lambda s: self._apply(light, s, rgb)))
+    def set_color(self, rgb: RGB, *, preserve_brightness: bool = False) -> None:
+        self._each(lambda light: light.run(
+            lambda session: self._apply(light, session, rgb, preserve_brightness)
+        ))
 
     def turn_off(self) -> None:
         self._each(lambda light: light.run(lambda s: s.turn_off()))
@@ -85,8 +87,12 @@ class LightGroup:
             except Exception as exc:
                 log.warning("light %s unreachable: %s", light.label, exc)
 
-    def _apply(self, light: Light, s, target: RGB) -> None:
+    def _apply(self, light: Light, s, target: RGB, preserve_brightness: bool = False) -> None:
         if s.is_on:
+            if preserve_brightness and max(target):
+                peak = max(s.rgb)
+                if peak:
+                    target = tuple(round(channel * peak / max(target)) for channel in target)
             self._fade(light, s, target)
         elif self.auto_turn_on:
             s.set_rgb(target, 0)

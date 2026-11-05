@@ -20,16 +20,16 @@ The Mac download is Developer ID signed and notarized by Apple. Windows is unsig
 
 These download links automatically serve the newest successful main build. Both apps must finish building, including Mac notarization, before a new release replaces the previous downloads.
 
-### Windows SmartScreen warning
+### Windows SmartScreen and Defender warnings
 
-The Windows download is free and currently **unsigned**; no paid Windows code-signing service is used. On first launch, Windows may show **Windows protected your PC** / **unrecognized app**.
+The Windows download is free and currently **unsigned**; no paid Windows code-signing certificate is used. Microsoft Defender may flag the ZIP or `MusicMatch.exe` **while the download finishes** (often `Behavior:Win32/Persistence.A!ml`). That is a machine-learning false positive common to unsigned PyInstaller apps, not evidence of malware in this repository.
 
-If you downloaded the ZIP from this repository's GitHub Release and trust it:
+If you downloaded `MusicMatch-Windows.zip` from this repository's GitHub Release and trust it:
 
-1. Click **More info** in the warning.
-2. Click **Run anyway** to launch MusicMatch.
+1. In Windows Security, allow/restore the MusicMatch download or add an exclusion for that ZIP/folder.
+2. On first launch, if SmartScreen shows **Windows protected your PC**, click **More info → Run anyway**.
 
-This is a SmartScreen reputation warning, not by itself a malware detection. Keep SmartScreen and antivirus enabled. These steps allow that download on your computer; they do not approve the app for everyone, and future downloads may show the warning again.
+Keep SmartScreen and antivirus enabled. These steps only allow this download on your computer. A future Authenticode-signed Windows build would be the lasting fix for reputation warnings.
 
 ## Setup
 
@@ -46,6 +46,14 @@ The window is resizable on Mac and Windows. The dashboard uses the available win
 MusicMatch checks for updates in the background when opened and daily while the window stays running, with network checks limited to once every 24 hours. When a newer release has a ZIP ready for your platform, a banner offers **Download**. This opens the ZIP in your browser; it does not install or replace the app automatically. Offline or failed checks are silent.
 
 Every push to main builds both apps in GitHub Actions, including signing and notarizing the Mac app. After both builds succeed, the workflow assigns a new version and publishes both ZIPs together as the latest GitHub Release. The download links above and in-app update checks then use that release. Builds are also available in the run's **Artifacts** section. CI embeds the chosen release version in both apps; the source VERSION file sets the minimum next version. Manual runs on other branches create artifacts only.
+
+### Brightness and color boost
+
+Song changes keep each powered-on light's current brightness, including adjustments made in its own app or with a voice assistant. The Brightness slider explicitly changes that level; the saved level is also used when MusicMatch turns an off light on. Off lights stay off unless auto turn-on is enabled.
+
+Color boost changes saturation, not the brightness setting. Highly saturated colors can still look less bright than white or pastel colors at the same level; this is separate from brightness being reset on a song change.
+
+If you switch from running the source checkout to a downloaded app, quit the old source tray/menu-bar service first. Source runs store settings and their instance lock in the checkout; downloaded apps use the per-user MusicMatch folder (%APPDATA%/MusicMatch on Windows, ~/Library/Application Support/MusicMatch on Mac). Both can otherwise run at once and send conflicting brightness and color settings to the same lights. If you enabled start at login for the source version, turn it off there, then enable it in the downloaded app so the login item points at the right copy.
 
 ### Lights not found?
 
@@ -65,4 +73,4 @@ git clone https://github.com/Ibrahim-Al-Omran/MusicMatch.git
 cd MusicMatch
 ```
 
-On Windows that also adds MusicMatch to the Start menu. `python -m musicmatch uninstall` removes it.
+On Windows that also adds MusicMatch to the Start menu. Start at login uses a Startup-folder shortcut (not a hidden registry Run key). `python -m musicmatch uninstall` removes the shortcuts.

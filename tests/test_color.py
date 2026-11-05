@@ -73,6 +73,7 @@ class ColorTests(unittest.TestCase):
                     self.assertEqual(max(rgb), round(255 * brightness / 100), (cover_rgb, boost))
 
     def test_rebrighten_keeps_hue(self):
+        self.assertEqual(rebrighten((255, 0, 0), 100), (255, 0, 0))
         self.assertEqual(rebrighten((128, 64, 0), 100), (255, 128, 0))
         self.assertEqual(rebrighten((255, 128, 0), 50), (128, 64, 0))
         self.assertAlmostEqual(hue(rebrighten((46, 46, 78), 20)), hue((46, 46, 78)), delta=0.01)
@@ -90,6 +91,14 @@ class ColorTests(unittest.TestCase):
 
     def test_grey_spotify_color_uses_neutral(self):
         self.assertEqual(led_color_from_spotify((40, 40, 42), 0.55, 100, NEUTRAL), NEUTRAL)
+
+    def test_spotify_boost_and_source_darkness_do_not_change_brightness(self):
+        for source in ((8, 80, 112), (80, 64, 64), (40, 40, 42)):
+            for boost in (0.0, 0.55, 1.0):
+                for brightness in (35, 50, 100):
+                    with self.subTest(source=source, boost=boost, brightness=brightness):
+                        rgb = led_color_from_spotify(source, boost, brightness, NEUTRAL)
+                        self.assertEqual(max(rgb), round(255 * brightness / 100))
 
     def test_rebrighten_black_is_none(self):
         self.assertIsNone(rebrighten((0, 0, 0), 50))

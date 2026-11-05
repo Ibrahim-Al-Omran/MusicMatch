@@ -22,3 +22,4 @@ MusicMatch.lnk
 build/
 dist/
 *.spec.bak
+packaging/_generated_version_info.txt
